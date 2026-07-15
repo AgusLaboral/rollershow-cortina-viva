@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 
@@ -47,7 +48,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.1;
+renderer.toneMappingExposure = 1.18;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xc9c2b6);
@@ -134,29 +135,51 @@ for (const side of [-1, 1]) {
 
 const glass = new THREE.Mesh(
   new THREE.PlaneGeometry(WIN_W - 0.02, WIN_H - 0.02),
-  new THREE.MeshBasicMaterial({ color: 0xfff3dc, transparent: true, opacity: 0.1, depthWrite: false })
+  new THREE.MeshBasicMaterial({ color: 0xfff0cf, transparent: true, opacity: 0.16, depthWrite: false })
 );
 glass.renderOrder = 1;
 glass.position.set(0, WIN_Y + WIN_H / 2, backZ + 0.012);
 scene.add(glass);
 
-const rodMat = new THREE.MeshStandardMaterial({ color: 0x4a4238, roughness: 0.4, metalness: 0.7 });
+// gradiente radial cálido: el "afuera" luminoso que se ve por el vidrio
+function makeGlowTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(128, 118, 20, 128, 128, 180);
+  grad.addColorStop(0, '#fffdf6');
+  grad.addColorStop(0.5, '#ffedc9');
+  grad.addColorStop(1, '#f7cf96');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 256, 256);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+const outsideGlow = new THREE.Mesh(
+  new THREE.PlaneGeometry(9, 7),
+  new THREE.MeshBasicMaterial({ map: makeGlowTexture(), toneMapped: false })
+);
+outsideGlow.position.set(0, WIN_Y + WIN_H / 2, backZ - 1.3);
+scene.add(outsideGlow);
+
+const rodMat = new THREE.MeshStandardMaterial({ color: 0x57493c, roughness: 0.5, metalness: 0.45 });
 const ROD_Y = winTop + 0.22;
-const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, WIN_W * 1.5, 12), rodMat);
+const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, WIN_W * 1.42, 24), rodMat);
 rod.rotation.z = Math.PI / 2;
-rod.position.set(0, ROD_Y, backZ + 0.3);
+rod.position.set(0, ROD_Y, backZ + 0.28);
 rod.castShadow = true;
 scene.add(rod);
-[-WIN_W * 0.72, WIN_W * 0.72].forEach((x) => {
-  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 12), rodMat);
-  cap.position.set(x, ROD_Y, backZ + 0.3);
+[-WIN_W * 0.71, WIN_W * 0.71].forEach((x) => {
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.032, 16, 16), rodMat);
+  cap.position.set(x, ROD_Y, backZ + 0.28);
   scene.add(cap);
 });
 
 // ---------------------------------------------------------------------------
 // Luz: sol golden-hour desde afuera + spot de recorte + fill mínimo
 // ---------------------------------------------------------------------------
-const SUN_BASE_INTENSITY = 5.2;
+const SUN_BASE_INTENSITY = 9.0;
 const sun = new THREE.DirectionalLight(0xffc27d, SUN_BASE_INTENSITY);
 sun.position.set(1.0, 1.9, backZ - 3.4);
 sun.target.position.set(-0.5, 0.4, 2.2);
@@ -237,13 +260,13 @@ scene.add(shaft);
 const PRODUCTS = [
   { name: 'Blackout', color: 'Blanco', tex: 'img/fabric/blackout.jpg', normal: 'img/fabric/blackout-nor.png',
     stiffness: 0.97, gravity: 7.4, friction: 0.962, influence: 0.34, dragCap: 0.028, roughness: 0.85,
-    opacity: 1, castShadow: true, tint: 0xffffff, sunFactor: 0.16, repeat: 1.6 },
+    opacity: 1, castShadow: true, tint: 0xffffff, sunFactor: 0.1, repeat: 1.6 },
   { name: 'Gasa', color: 'Beige', tex: 'img/fabric/gasa.jpg', normal: 'img/fabric/gasa-nor.png',
     stiffness: 0.93, gravity: 6.2, friction: 0.968, influence: 0.42, dragCap: 0.04, roughness: 0.6,
-    opacity: 0.74, castShadow: false, tint: 0xfaf0dc, sunFactor: 0.75, repeat: 1.8 },
+    opacity: 0.74, castShadow: false, tint: 0xfaf0dc, sunFactor: 0.72, repeat: 1.8 },
   { name: 'Tusor', color: 'Natural', tex: 'img/fabric/tusor.jpg', normal: 'img/fabric/tusor-nor.png',
     stiffness: 0.95, gravity: 6.8, friction: 0.965, influence: 0.38, dragCap: 0.034, roughness: 0.8,
-    opacity: 0.9, castShadow: false, tint: 0xe9dfc9, sunFactor: 0.42, repeat: 1.7 },
+    opacity: 0.9, castShadow: false, tint: 0xe9dfc9, sunFactor: 0.35, repeat: 1.7 },
 ];
 
 const texLoader = new THREE.TextureLoader();
@@ -316,7 +339,7 @@ function createSim(side) {
     for (let x = 0; x < COLS; x++) sim.restSpacingX.push(Math.abs(colX[x + 1] - colX[x]));
     for (let y = 0; y <= ROWS; y++) {
       for (let x = 0; x <= COLS; x++) {
-        const px = sim.anchorX(colX[x]), py = ROD_Y - 0.03 - y * sy;
+        const px = sim.anchorX(colX[x]), py = ROD_Y + 0.035 - y * sy;
         sim.points.push({ x: px, y: py, px, py, baseX: colX[x], pinned: y === 0, u: x / COLS, v: y / ROWS });
         const i = sim.points.length - 1;
         if (x > 0) sim.constraints.push({ a: i - 1, b: i, len: sim.restSpacingX[x - 1] });
@@ -335,7 +358,7 @@ function createSim(side) {
         const spread = lerp(k.from.spread, k.to.spread, e);
         const offset = lerp(k.from.offsetX, k.to.offsetX, e);
         p.x = offset + outer + (p.baseX - outer) * spread;
-        p.y = ROD_Y - 0.03 - p.v * ROWS * sy;
+        p.y = ROD_Y + 0.035 - p.v * ROWS * sy;
         p.px = p.x; p.py = p.y;
       }
       return;
@@ -406,7 +429,7 @@ function createSet(product) {
   for (let i = 0; i < 2; i++) {
     const mesh = new THREE.Mesh(set.geos[i], makeCurtainMaterial(product));
     mesh.renderOrder = 3;
-    mesh.position.z = backZ + 0.3;
+    mesh.position.z = backZ + 0.35;
     scene.add(mesh);
     set.meshes.push(mesh);
   }
@@ -525,6 +548,9 @@ const godrayPass = new ShaderPass({
   fragmentShader: GODRAY_FRAG,
 });
 composer.addPass(godrayPass);
+// blur atmosférico: bloom suave sobre las altas luces (la ventana, el charco)
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.45, 0.85, 0.8);
+composer.addPass(bloomPass);
 composer.addPass(new OutputPass());
 
 const lightWorldPos = new THREE.Vector3(0, WIN_Y + WIN_H / 2, backZ);
@@ -542,7 +568,8 @@ function applyLightMix() {
   godrayPass.uniforms.strength.value = sf;
   // el haz volumétrico: los paños tapan los costados pero el medio queda
   // abierto — el haz respira con el producto (blackout casi lo apaga)
-  shaftMat.uniforms.uIntensity.value = 0.015 + 0.065 * sf;
+  shaftMat.uniforms.uIntensity.value = 0.02 + 0.09 * sf;
+  bloomPass.strength = 0.2 + 0.5 * sf;
 }
 
 // ---------------------------------------------------------------------------
