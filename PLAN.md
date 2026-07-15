@@ -53,6 +53,23 @@ pliega hacia su borde y sale; la entrante llega plegada y se despliega, con
 lag por fila. La física libre (hover/gravedad/tilt) retoma al terminar.
 Física en sub-pasos fijos de 1/60s => idéntica a cualquier framerate.
 
+## v5-v7 (2026-07-15, noche) — ambiente claro + modelos de Agus
+
+- v5: cámara en ángulo (~40°), DOS PAÑOS entreabiertos (luz por el medio),
+  haz volumétrico (prisma aditivo ventana→piso), audio ambient generativo
+  (Web Audio, tipo Marconi Union, modulado por el movimiento de la tela,
+  mute arriba a la derecha), sin grano animado (los "puntitos" molestaban).
+- v6: pivote a AMBIENTE CLARO minimalista (referencia visual de Agus: cuarto
+  limpio, luz nítida en el piso). Puerta-ventana blanca procedural de dos
+  hojas con grilla de paños (los .zip de ventanas eran .max/formatos de
+  escritorio; la procedural da proporciones exactas de puerta-ventana).
+- v7: telas REALES desde los modelos .max que pasó Agus (extraídos los maps):
+  img/fabric/*.jpg + normales derivadas. Blackout Blanco / Gasa Beige /
+  Tusor Natural (renombrado de "Torsor"). Ondas wave-fold densas (sin(u)
+  alternante en Z, ver wireframe de referencia), ruedo al piso, gap central
+  chico. Fix sorting vidrio/tela (depthWrite false + renderOrder).
+  Los .max NO se cargan en web: se respetó forma (wave fold) y texturas.
+
 ## Pendiente inmediato
 
 1. Juicio visual de Agus sobre la ronda actual (screenshots `_scratch/r15-*`).

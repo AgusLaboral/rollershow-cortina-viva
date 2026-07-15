@@ -6,13 +6,18 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 
 // ============================================================================
-// Dirección de arte (decidida por Agus): OSCURIDAD como escenario. No hay
-// cuarto: solo un piso negro apenas reflectante, y la ventana como objeto 3D
-// protagonista por donde entra la única luz (golden hour, HDRI real blureado).
-// La luz impacta la oscuridad: god-rays ocluidos por la cortina real, charco
-// de sol en el piso, y la tela dramáticamente iluminada. El cambio de producto
-// NO es un crossfade: la cortina vieja SE VA deslizándose por el barral y la
-// nueva ENTRA desde el otro lado, ondeando por su propia física.
+// v5 — Dirección de Agus:
+// - Cámara en ángulo (~40°), no frontal. La luz del atardecer entra por la
+//   ventana y se refleja en el piso oscuro (sin grano animado: puntitos NO).
+// - Haz de luz VOLUMÉTRICO visible (mesh aditivo desde la ventana al piso,
+//   estilo RTX) + god-rays sutiles + haze.
+// - Cortina en DOS PAÑOS entreabiertos: la luz pasa por el medio. El hover
+//   mueve la tela de cada paño.
+// - Productos: Blackout BLANCO (opaco total), Gasa beige (más cubriente que
+//   antes) y Tusor natural (más cubriente aún). Gasa y tusor dejan pasar luz.
+// - Caída ondulada (pliegues S marcados), no recta.
+// - Audio ambient generativo tipo Marconi Union, bajísimo y elegante, que
+//   varía suavemente cuando la tela se mueve. Arranca con el primer gesto.
 // ============================================================================
 
 const canvas = document.getElementById('scene');
@@ -26,6 +31,7 @@ const measurePanel = document.getElementById('measurePanel');
 const anchoValue = document.getElementById('anchoValue');
 const altoValue = document.getElementById('altoValue');
 const ctaWhatsapp = document.getElementById('ctaWhatsapp');
+const muteBtn = document.getElementById('muteBtn');
 
 const WHATSAPP_NUMBER = '5491140813223';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -33,7 +39,7 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const easeInOut = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
 // ---------------------------------------------------------------------------
-// Renderer / cámara / escena
+// Renderer / cámara
 // ---------------------------------------------------------------------------
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -44,72 +50,64 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x000000);
-
-const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 80);
-camera.position.set(0, 1.55, 5.6);
-camera.lookAt(0, 1.5, 0);
+scene.background = new THREE.Color(0xc9c2b6);
 
 const isMobile = matchMedia('(max-width:640px)').matches;
+const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 80);
 
 // ---------------------------------------------------------------------------
-// La ventana (objeto 3D protagonista) y el vacío alrededor
+// Puerta-ventana protagonista en ambiente CLARO minimalista (referencia de
+// Agus: cuarto limpio, ventana blanca de paños con grilla, charco de luz
+// nítido en el piso). La puerta-ventana va del piso al dintel, en dos hojas
+// con grilla de vidrios — los parantes proyectan la sombra en grilla.
 // ---------------------------------------------------------------------------
-const WIN_W = 2.7, WIN_H = 2.55, WIN_Y = 0.35;
+const WIN_W = 2.6, WIN_Y = 0.02, WIN_H = 2.72;
 const backZ = -2.2;
 const winTop = WIN_Y + WIN_H;
 
-// Pared "invisible": negro puro no-iluminado, gigante — se funde con el fondo
-// y recorta el HDRI para que SOLO se vea por el hueco de la ventana.
-const voidShape = new THREE.Shape();
-voidShape.moveTo(-40, -20); voidShape.lineTo(40, -20); voidShape.lineTo(40, 30); voidShape.lineTo(-40, 30);
-voidShape.closePath();
-const voidHole = new THREE.Path();
-voidHole.moveTo(-WIN_W / 2, WIN_Y); voidHole.lineTo(WIN_W / 2, WIN_Y);
-voidHole.lineTo(WIN_W / 2, winTop); voidHole.lineTo(-WIN_W / 2, winTop);
-voidHole.closePath();
-voidShape.holes.push(voidHole);
-const voidWall = new THREE.Mesh(
-  new THREE.ShapeGeometry(voidShape),
-  new THREE.MeshBasicMaterial({ color: 0x000000 })
-);
-voidWall.position.z = backZ;
-scene.add(voidWall);
-// una segunda pared física (invisible al ojo, negra) que SÍ bloquea el sol
-const sunBlocker = new THREE.Mesh(new THREE.ShapeGeometry(voidShape), new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 1 }));
-sunBlocker.position.z = backZ - 0.01;
-sunBlocker.castShadow = true;
-sunBlocker.receiveShadow = false;
-scene.add(sunBlocker);
+// Paredes y piso claros, sin textura cargada: superficie limpia que recibe luz
+const ROOM = { w: 30, h: 12 };
+const wallMat = new THREE.MeshStandardMaterial({ color: 0xcfc9bf, roughness: 0.95, metalness: 0 });
+const wallShape = new THREE.Shape();
+wallShape.moveTo(-ROOM.w / 2, 0); wallShape.lineTo(ROOM.w / 2, 0);
+wallShape.lineTo(ROOM.w / 2, ROOM.h); wallShape.lineTo(-ROOM.w / 2, ROOM.h);
+wallShape.closePath();
+const wallHole = new THREE.Path();
+wallHole.moveTo(-WIN_W / 2, WIN_Y); wallHole.lineTo(WIN_W / 2, WIN_Y);
+wallHole.lineTo(WIN_W / 2, winTop); wallHole.lineTo(-WIN_W / 2, winTop);
+wallHole.closePath();
+wallShape.holes.push(wallHole);
+const backWall = new THREE.Mesh(new THREE.ShapeGeometry(wallShape), wallMat);
+backWall.position.z = backZ;
+backWall.receiveShadow = true;
+backWall.castShadow = true;
+scene.add(backWall);
 
-// HDRI golden hour: visible solo por el hueco, blureado (haze cálido).
-// Rotación calculada del archivo con _scratch/find-sun.mjs (sol en u=0.60).
-const ENV_ROT = 2.196;
+const ENV_ROT = 2.196; // sol del HDRI centrado en la ventana (calculado del archivo)
 new RGBELoader().load('img/env/sunset.hdr', (hdr) => {
   hdr.mapping = THREE.EquirectangularReflectionMapping;
   scene.environment = hdr;
   scene.background = hdr;
-  scene.backgroundBlurriness = 0.45; // sin línea de horizonte dura: puro resplandor cálido
-  scene.backgroundIntensity = 1.12;
-  scene.environmentIntensity = 0.1;
+  scene.backgroundBlurriness = 0.5;
+  scene.backgroundIntensity = 1.15;
+  scene.environmentIntensity = 0.32;
   scene.backgroundRotation = new THREE.Euler(0, ENV_ROT, 0);
   scene.environmentRotation = new THREE.Euler(0, ENV_ROT, 0);
 });
 
-// Piso de estudio: negro, apenas reflectante — recibe el charco de sol y la
-// sombra de la cortina, y se pierde en la oscuridad.
+// Piso claro, satinado apenas: refleja suave la luz (sin ruido, sin puntitos)
 const floor = new THREE.Mesh(
-  new THREE.PlaneGeometry(60, 60),
-  new THREE.MeshStandardMaterial({ color: 0x070606, roughness: 0.48, metalness: 0.08 })
+  new THREE.PlaneGeometry(80, 80),
+  new THREE.MeshStandardMaterial({ color: 0xbfb8ac, roughness: 0.55, metalness: 0.06 })
 );
 floor.rotation.x = -Math.PI / 2;
 floor.position.set(0, 0, 10);
 floor.receiveShadow = true;
 scene.add(floor);
 
-// Marco de ventana moderno: aluminio negro mate, líneas finas, con umbral.
-const frameMat = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.42, metalness: 0.72 });
-const F = 0.055; // grosor visual del perfil
+// Puerta-ventana blanca de dos hojas con grilla de paños (estilo referencia)
+const frameMat = new THREE.MeshStandardMaterial({ color: 0xf2efe8, roughness: 0.55, metalness: 0.05 });
+const F = 0.06;
 function frameBar(w, h, d, x, y, z) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), frameMat);
   m.position.set(x, y, z);
@@ -117,22 +115,32 @@ function frameBar(w, h, d, x, y, z) {
   scene.add(m);
   return m;
 }
-frameBar(WIN_W + F * 2, F, 0.12, 0, winTop + F / 2, backZ);          // dintel
-frameBar(WIN_W + F * 2, F * 1.6, 0.16, 0, WIN_Y - F * 0.8, backZ);   // umbral (sill)
-frameBar(F, WIN_H + F * 2, 0.12, -WIN_W / 2 - F / 2, WIN_Y + WIN_H / 2, backZ);
-frameBar(F, WIN_H + F * 2, 0.12, WIN_W / 2 + F / 2, WIN_Y + WIN_H / 2, backZ);
-frameBar(F * 0.72, WIN_H, 0.1, 0, WIN_Y + WIN_H / 2, backZ);         // parante central
+// marco perimetral
+frameBar(WIN_W + F * 2, F, 0.14, 0, winTop + F / 2, backZ);
+frameBar(WIN_W + F * 2, F, 0.14, 0, WIN_Y - F / 2 + 0.01, backZ);
+frameBar(F, WIN_H + F * 2, 0.14, -WIN_W / 2 - F / 2, WIN_Y + WIN_H / 2, backZ);
+frameBar(F, WIN_H + F * 2, 0.14, WIN_W / 2 + F / 2, WIN_Y + WIN_H / 2, backZ);
+// parante central (división de las dos hojas, un poco más grueso)
+frameBar(F * 1.3, WIN_H, 0.12, 0, WIN_Y + WIN_H / 2, backZ);
+// grilla de cada hoja: 1 parante vertical y 3 travesaños => 2x4 vidrios por hoja
+const MUNT = F * 0.5;
+for (const side of [-1, 1]) {
+  const cx = side * WIN_W / 4; // centro de la hoja
+  frameBar(MUNT, WIN_H, 0.09, cx, WIN_Y + WIN_H / 2, backZ); // vertical
+  for (let r = 1; r <= 3; r++) {
+    frameBar(WIN_W / 2 - F, MUNT, 0.09, cx, WIN_Y + (WIN_H / 4) * r, backZ);
+  }
+}
 
-// vidrio con tinte apenas perceptible
 const glass = new THREE.Mesh(
   new THREE.PlaneGeometry(WIN_W - 0.02, WIN_H - 0.02),
-  new THREE.MeshBasicMaterial({ color: 0xfff1d8, transparent: true, opacity: 0.07 })
+  new THREE.MeshBasicMaterial({ color: 0xfff3dc, transparent: true, opacity: 0.1, depthWrite: false })
 );
+glass.renderOrder = 1;
 glass.position.set(0, WIN_Y + WIN_H / 2, backZ + 0.012);
 scene.add(glass);
 
-// Barral de la cortina: caño fino oscuro con soportes, apenas sobre el dintel.
-const rodMat = new THREE.MeshStandardMaterial({ color: 0x2a221a, roughness: 0.35, metalness: 0.85 });
+const rodMat = new THREE.MeshStandardMaterial({ color: 0x4a4238, roughness: 0.4, metalness: 0.7 });
 const ROD_Y = winTop + 0.22;
 const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, WIN_W * 1.5, 12), rodMat);
 rod.rotation.z = Math.PI / 2;
@@ -146,7 +154,7 @@ scene.add(rod);
 });
 
 // ---------------------------------------------------------------------------
-// Luz: el sol golden-hour AFUERA, entrando por la ventana. Única luz fuerte.
+// Luz: sol golden-hour desde afuera + spot de recorte + fill mínimo
 // ---------------------------------------------------------------------------
 const SUN_BASE_INTENSITY = 5.2;
 const sun = new THREE.DirectionalLight(0xffc27d, SUN_BASE_INTENSITY);
@@ -161,47 +169,96 @@ sun.shadow.camera.top = 4; sun.shadow.camera.bottom = -4;
 sun.shadow.bias = -0.002;
 scene.add(sun, sun.target);
 
-// Luz de recorte tenue para que la tela se lea contra la oscuridad (fija).
-// Spot de recorte (luz de estudio): apunta a la cortina para que el producto
-// SIEMPRE se lea contra la oscuridad, sin importar cuánta luz deje pasar.
-const keyFill = new THREE.SpotLight(0xffdcb0, 26, 18, 0.72, 0.65, 1.5);
+const keyFill = new THREE.SpotLight(0xfff0d8, 9, 18, 0.8, 0.7, 1.6);
 keyFill.position.set(-1.8, 2.4, 3.4);
 keyFill.target.position.set(0, 1.4, backZ + 0.3);
 scene.add(keyFill, keyFill.target);
 
-const FILL_BASE_INTENSITY = 0.55;
-const fill = new THREE.HemisphereLight(0xffe4bb, 0x000000, FILL_BASE_INTENSITY);
+const FILL_BASE_INTENSITY = 1.35;
+const fill = new THREE.HemisphereLight(0xfdf3e3, 0x8a8378, FILL_BASE_INTENSITY);
 scene.add(fill);
-const fillFor = (sunFactor) => FILL_BASE_INTENSITY * lerp(0.6, 1, sunFactor);
+const fillFor = (sf) => FILL_BASE_INTENSITY * lerp(0.72, 1, sf);
 
 // ---------------------------------------------------------------------------
-// Productos
+// HAZ VOLUMÉTRICO: prisma aditivo desde el hueco de la ventana hasta el piso
+// siguiendo la dirección real del sol — la luz "se ve" entrar al ambiente.
+// ---------------------------------------------------------------------------
+const sunDir = new THREE.Vector3().subVectors(sun.target.position, sun.position).normalize();
+function projectToFloor(x, y, z) {
+  const t = y / -sunDir.y; // distancia hasta y=0
+  return [x + sunDir.x * t, 0.001, z + sunDir.z * t];
+}
+const shaftGeo = new THREE.BufferGeometry();
+{
+  const tl = [-WIN_W / 2, winTop, backZ + 0.02], tr = [WIN_W / 2, winTop, backZ + 0.02];
+  const bl = [-WIN_W / 2, WIN_Y, backZ + 0.02], br = [WIN_W / 2, WIN_Y, backZ + 0.02];
+  const ftl = projectToFloor(...tl), ftr = projectToFloor(...tr);
+  const positions = new Float32Array([
+    ...tl, ...tr, ...bl, ...br,     // 0-3: hueco de la ventana
+    ...ftl, ...ftr,                 // 4-5: proyección del borde superior en el piso
+  ]);
+  // caras: hueco -> piso (dos "cortinas" de luz: superior e inferior del haz)
+  const idx = [
+    0, 1, 5, 0, 5, 4,   // lámina superior del haz
+    2, 3, 5, 2, 5, 4,   // lámina inferior (converge al piso)
+  ];
+  // intensidad por vértice: fuerte en la ventana, se disuelve al llegar al piso
+  const alphas = new Float32Array([0.9, 0.9, 0.55, 0.55, 0.0, 0.0]);
+  shaftGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  shaftGeo.setAttribute('aAlpha', new THREE.BufferAttribute(alphas, 1));
+  shaftGeo.setIndex(idx);
+}
+const shaftMat = new THREE.ShaderMaterial({
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  side: THREE.DoubleSide,
+  uniforms: {
+    uIntensity: { value: 0.16 },
+    uColor: { value: new THREE.Color(1.0, 0.78, 0.5) },
+  },
+  vertexShader: `
+    attribute float aAlpha;
+    varying float vAlpha;
+    void main(){ vAlpha = aAlpha; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform float uIntensity;
+    uniform vec3 uColor;
+    varying float vAlpha;
+    void main(){ gl_FragColor = vec4(uColor, vAlpha * uIntensity); }`,
+});
+const shaft = new THREE.Mesh(shaftGeo, shaftMat);
+scene.add(shaft);
+
+// ---------------------------------------------------------------------------
+// Productos (corregidos por Agus): blackout BLANCO opaco; gasa y tusor dejan
+// pasar luz pero son más cubrientes que antes.
 // ---------------------------------------------------------------------------
 const PRODUCTS = [
-  { name: 'Blackout', color: 'Gris', tex: 'img/tela-blackout-gris.png', normal: 'img/normal-blackout-gris.png',
-    stiffness: 0.97, gravity: 7.4, friction: 0.962, influence: 0.34, dragCap: 0.028, roughness: 0.9,
-    opacity: 1, castShadow: true, tint: 0xb4b9bd, sunFactor: 0.22, repeat: 2.6 },
-  { name: 'Gasa', color: 'Beige', tex: 'img/tela-gasa-beige.png', normal: 'img/normal-gasa-beige.png',
-    stiffness: 0.93, gravity: 6.2, friction: 0.968, influence: 0.42, dragCap: 0.04, roughness: 0.55,
-    opacity: 0.52, castShadow: false, tint: 0xf6ead0, sunFactor: 1.0, repeat: 3.4 },
-  { name: 'Torsor', color: 'Blanco', tex: 'img/tela-torsor-blanco.png', normal: 'img/normal-torsor-blanco.png',
-    stiffness: 0.95, gravity: 6.8, friction: 0.965, influence: 0.38, dragCap: 0.034, roughness: 0.72,
-    opacity: 0.85, castShadow: false, tint: 0xf3ecdc, sunFactor: 0.62, repeat: 3.0 },
+  { name: 'Blackout', color: 'Blanco', tex: 'img/fabric/blackout.jpg', normal: 'img/fabric/blackout-nor.png',
+    stiffness: 0.97, gravity: 7.4, friction: 0.962, influence: 0.34, dragCap: 0.028, roughness: 0.85,
+    opacity: 1, castShadow: true, tint: 0xffffff, sunFactor: 0.16, repeat: 1.6 },
+  { name: 'Gasa', color: 'Beige', tex: 'img/fabric/gasa.jpg', normal: 'img/fabric/gasa-nor.png',
+    stiffness: 0.93, gravity: 6.2, friction: 0.968, influence: 0.42, dragCap: 0.04, roughness: 0.6,
+    opacity: 0.74, castShadow: false, tint: 0xfaf0dc, sunFactor: 0.75, repeat: 1.8 },
+  { name: 'Tusor', color: 'Natural', tex: 'img/fabric/tusor.jpg', normal: 'img/fabric/tusor-nor.png',
+    stiffness: 0.95, gravity: 6.8, friction: 0.965, influence: 0.38, dragCap: 0.034, roughness: 0.8,
+    opacity: 0.9, castShadow: false, tint: 0xe9dfc9, sunFactor: 0.42, repeat: 1.7 },
 ];
 
 const texLoader = new THREE.TextureLoader();
-function fabricTex(src, srgb, rep) {
+function fabricTex(src, srgb, rep, repY) {
   const t = texLoader.load(src);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(rep, rep);
-  t.anisotropy = renderer.capabilities.getMaxAnisotropy(); // nitidez en ángulo/movimiento
+  t.repeat.set(rep, repY ?? rep);
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
 function makeCurtainMaterial(p) {
   return new THREE.MeshStandardMaterial({
-    map: fabricTex(p.tex, true, p.repeat),
-    normalMap: fabricTex(p.normal, false, p.repeat),
+    map: fabricTex(p.tex, true, p.repeat * 0.55, p.repeat),
+    normalMap: fabricTex(p.normal, false, p.repeat * 0.55, p.repeat),
     normalScale: new THREE.Vector2(0.5, 0.5),
     color: p.tint,
     roughness: p.roughness,
@@ -213,11 +270,11 @@ function makeCurtainMaterial(p) {
 }
 
 // ---------------------------------------------------------------------------
-// Física de tela: DOS simulaciones independientes (una por malla) para que la
-// transición sea física de verdad: la vieja se desliza por el barral hacia un
-// costado y la nueva entra desde el otro, ondeando con su propio peso.
+// Física: CUATRO simulaciones (2 paños x 2 sets para el carrusel).
+// Cada paño cubre poco más de la mitad de la ventana y cuelga entreabierto:
+// la luz pasa por el medio. Ondulado marcado como estado de reposo.
 // ---------------------------------------------------------------------------
-const COLS = isMobile ? 14 : 18;
+const COLS = isMobile ? 9 : 11;   // por paño
 const ROWS = isMobile ? 20 : 26;
 const ITERATIONS = 4;
 const nx = COLS + 1;
@@ -226,26 +283,36 @@ const ANCHO_MIN = 60, ANCHO_MAX = 300, ANCHO_DEF = 120;
 const ALTO_MIN = 60, ALTO_MAX = 260, ALTO_DEF = 150;
 let anchoCm = ANCHO_DEF, altoCm = ALTO_DEF;
 
-const BASE_W = WIN_W * 1.12, BASE_H = winTop - 0.02;
-let W_M = BASE_W, H_M = BASE_H;
+const FULL_W = WIN_W * 1.28;           // ancho total del par de paños
+let W_M = FULL_W, H_M = winTop + 0.16; // el ruedo besa el piso
+const PANEL_GAP = 0.18;                // apertura central en reposo (más juntos, pasa un haz)
 
-// Pliegue de pinza como ESTADO DE REPOSO (las columnas se agrupan; los
-// rest-lengths usan esa distancia => la caída natural son curvas en S).
-const PLEAT_COUNT = 6;
-const PLEAT_AMPLITUDE = 0.5;
+const PLEAT_COUNT = 7;                 // ondas por paño (wave fold denso)
+const PLEAT_AMPLITUDE = 0.55;
 const gatheredU = (u) => u + (PLEAT_AMPLITUDE / (PLEAT_COUNT * Math.PI * 2)) * Math.sin(u * PLEAT_COUNT * Math.PI * 2);
 
-function createSim() {
-  // Anclaje por columna: pinned_x = offsetX + gatherX + (baseX - gatherX) * spread.
-  // spread=1/offset=0 => reposo. spread→0.15 junta la cortina en pliegues hacia
-  // gatherX (como al correrla de verdad); offsetX la desliza ya plegada.
-  const sim = { points: [], constraints: [], restSpacingX: [], spread: 1, offsetX: 0, gatherX: 0 };
-  sim.anchorX = (baseX) => sim.offsetX + sim.gatherX + (baseX - sim.gatherX) * sim.spread;
+// side: -1 = paño izquierdo (cuelga desde el borde izquierdo hacia el centro)
+function createSim(side) {
+  const sim = { side, points: [], constraints: [], restSpacingX: [], spread: 1, offsetX: 0, kinematic: null };
+  // reposo del paño: desde el borde exterior hasta cerca del centro (gap)
+  sim.panelRange = () => {
+    const half = W_M / 2;
+    const panelW = half * (1 - PANEL_GAP / 2);
+    const outer = side * half;
+    const inner = side * (half - panelW);
+    return { outer, inner, w: Math.abs(outer - inner) };
+  };
+  // el paño se pliega SIEMPRE hacia su borde exterior
+  sim.anchorX = (baseX) => {
+    const { outer } = sim.panelRange();
+    return sim.offsetX + outer + (baseX - outer) * sim.spread;
+  };
   sim.build = () => {
     sim.points = []; sim.constraints = []; sim.restSpacingX = [];
+    const { outer, inner } = sim.panelRange();
     const sy = H_M / ROWS;
     const colX = [];
-    for (let x = 0; x <= COLS; x++) colX.push(-W_M / 2 + gatheredU(x / COLS) * W_M);
+    for (let x = 0; x <= COLS; x++) colX.push(outer + gatheredU(x / COLS) * (inner - outer));
     for (let x = 0; x < COLS; x++) sim.restSpacingX.push(Math.abs(colX[x + 1] - colX[x]));
     for (let y = 0; y <= ROWS; y++) {
       for (let x = 0; x <= COLS; x++) {
@@ -258,29 +325,25 @@ function createSim() {
     }
   };
   sim.step = (dt, params, ptr, tiltX) => {
-    // Modo cinemático (transición de carrusel): cada punto sigue su posición
-    // coreografiada con un lag suave por fila — plegado SIEMPRE prolijo, sin
-    // caos de física. La simulación libre retoma al terminar.
     if (sim.kinematic) {
       const k = sim.kinematic;
       const sy = H_M / ROWS;
+      const { outer } = sim.panelRange();
       for (const p of sim.points) {
         const tRow = clamp((k.t * 1.18 - p.v * 0.18), 0, 1);
         const e = easeInOut(tRow);
         const spread = lerp(k.from.spread, k.to.spread, e);
         const offset = lerp(k.from.offsetX, k.to.offsetX, e);
-        p.x = offset + k.gatherX + (p.baseX - k.gatherX) * spread;
+        p.x = offset + outer + (p.baseX - outer) * spread;
         p.y = ROD_Y - 0.03 - p.v * ROWS * sy;
         p.px = p.x; p.py = p.y;
       }
       return;
     }
     const dt2 = dt * dt;
+    const MAXV = 0.11;
     for (const p of sim.points) {
       if (p.pinned) { p.x = sim.anchorX(p.baseX); p.px = p.x; continue; }
-      // clamp de velocidad: evita que la tela "explote" cuando el anclaje se
-      // mueve rápido (transición de carrusel) o ante un drag violento
-      const MAXV = 0.11;
       const vx = clamp((p.x - p.px) * params.friction, -MAXV, MAXV);
       const vy = clamp((p.y - p.py) * params.friction, -MAXV, MAXV);
       p.px = p.x; p.py = p.y;
@@ -311,21 +374,24 @@ function createSim() {
   return sim;
 }
 
-function makeCurtainGeometry() { return new THREE.PlaneGeometry(1, 1, COLS, ROWS); }
+function makePanelGeometry() { return new THREE.PlaneGeometry(1, 1, COLS, ROWS); }
 function uploadGeometry(geo, sim) {
   const pos = geo.attributes.position, uv = geo.attributes.uv;
   for (let y = 0; y <= ROWS; y++) {
     for (let x = 0; x <= COLS; x++) {
       const i = y * nx + x;
       const p = sim.points[i];
-      let bulge = 0;
+      // onda S real (wave fold): alterna adelante/atrás como una cortina de
+      // riel; la compresión local profundiza la onda (al juntarla se pliega más)
+      let compress = 0;
       if (x > 0 && x < COLS) {
         const l = sim.points[i - 1], r = sim.points[i + 1];
         const span = Math.hypot(r.x - l.x, r.y - l.y);
         const rest = sim.restSpacingX[x - 1] + sim.restSpacingX[x];
-        bulge = clamp((rest - span) / rest, -0.5, 1) * 0.16;
+        compress = clamp((rest - span) / rest, 0, 1);
       }
-      pos.setXYZ(i, p.x, p.y, bulge);
+      const wave = Math.sin(p.u * Math.PI * 2 * PLEAT_COUNT) * (0.085 + compress * 0.12);
+      pos.setXYZ(i, p.x, p.y, wave);
       uv.setXY(i, p.u, 1 - p.v);
     }
   }
@@ -333,26 +399,36 @@ function uploadGeometry(geo, sim) {
   geo.computeVertexNormals();
 }
 
-const simA = createSim(), simB = createSim();
-const geoA = makeCurtainGeometry(), geoB = makeCurtainGeometry();
-const meshA = new THREE.Mesh(geoA, makeCurtainMaterial(PRODUCTS[0]));
-const meshB = new THREE.Mesh(geoB, makeCurtainMaterial(PRODUCTS[1]));
-meshA.position.z = backZ + 0.3;
-meshB.position.z = backZ + 0.3;
-meshA.castShadow = PRODUCTS[0].castShadow;
-meshB.visible = false;
-scene.add(meshA, meshB);
+// un "set" = dos paños (izq + der) con el mismo material/producto
+function createSet(product) {
+  const set = { sims: [createSim(-1), createSim(1)], meshes: [], visible: true };
+  set.geos = [makePanelGeometry(), makePanelGeometry()];
+  for (let i = 0; i < 2; i++) {
+    const mesh = new THREE.Mesh(set.geos[i], makeCurtainMaterial(product));
+    mesh.renderOrder = 3;
+    mesh.position.z = backZ + 0.3;
+    scene.add(mesh);
+    set.meshes.push(mesh);
+  }
+  set.setVisible = (v) => { set.visible = v; set.meshes.forEach((m) => { m.visible = v; }); };
+  set.setCastShadow = (v) => set.meshes.forEach((m) => { m.castShadow = v; });
+  set.setMaterial = (product) => set.meshes.forEach((m) => { m.material.dispose(); m.material = makeCurtainMaterial(product); });
+  set.opacity = () => set.meshes[0].material.opacity;
+  return set;
+}
+
+const setA = createSet(PRODUCTS[0]);
+const setB = createSet(PRODUCTS[1]);
+setB.setVisible(false);
+setA.setCastShadow(PRODUCTS[0].castShadow);
 
 let currentIndex = 0;
 let active = PRODUCTS[0];
-let activeMesh = meshA, activeSim = simA;
-let idleMesh = meshB, idleSim = simB;
+let activeSet = setA, idleSet = setB;
 let lightMix = { from: PRODUCTS[0], to: PRODUCTS[0], t: 1 };
 
 // ---------------------------------------------------------------------------
-// God-rays: la luz entrando desde la ventana, ocluida por la silueta REAL de
-// la cortina (con la opacidad de su tela). En la oscuridad, el haz es el alma
-// de la escena.
+// God-rays sutiles (la oclusión real de los paños modula el resplandor)
 // ---------------------------------------------------------------------------
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
@@ -368,9 +444,9 @@ scene.add(glowPlane);
 const OCC_SIZE = isMobile ? 160 : 256;
 const occlusionTarget = new THREE.WebGLRenderTarget(OCC_SIZE, Math.round(OCC_SIZE * 1.5));
 const occOpaque = new THREE.MeshBasicMaterial({ color: 0x000000 });
-const occCurtainA = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true });
-const occCurtainB = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true });
+const occCurtain = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true });
 const occSwap = new Map();
+const curtainMeshes = new Set([...setA.meshes, ...setB.meshes]);
 
 function renderOcclusionPass() {
   const prevTarget = renderer.getRenderTarget();
@@ -388,10 +464,9 @@ function renderOcclusionPass() {
   renderer.clearDepth();
   occSwap.clear();
   scene.traverse((o) => {
-    if (!o.isMesh || o === glowPlane || o === glass) return;
+    if (!o.isMesh || o === glowPlane || o === glass || o === shaft) return;
     occSwap.set(o, o.material);
-    if (o === meshA) { occCurtainA.opacity = meshA.material.opacity; o.material = occCurtainA; }
-    else if (o === meshB) { occCurtainB.opacity = meshB.material.opacity; o.material = occCurtainB; }
+    if (curtainMeshes.has(o)) { occCurtain.opacity = o.material.opacity; o.material = occCurtain; }
     else o.material = occOpaque;
   });
   camera.layers.disableAll(); camera.layers.enable(0);
@@ -403,7 +478,7 @@ function renderOcclusionPass() {
   renderer.setRenderTarget(prevTarget);
 }
 
-// Shader final: god-rays + viñeta + grano fino — look de fotografía, no render.
+// Shader final: god-rays + viñeta. SIN grano animado (los "puntitos" molestaban).
 const GODRAY_FRAG = `
   uniform sampler2D tDiffuse;
   uniform sampler2D tOcclusion;
@@ -413,11 +488,9 @@ const GODRAY_FRAG = `
   uniform float density;
   uniform float weight;
   uniform float strength;
-  uniform float time;
   uniform vec3 tint;
   varying vec2 vUv;
   const int NUM_SAMPLES = ${isMobile ? 28 : 48};
-  float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
   void main() {
     vec2 deltaTextCoord = (vUv - lightPos) * (density / float(NUM_SAMPLES));
     vec2 coord = vUv;
@@ -431,12 +504,8 @@ const GODRAY_FRAG = `
     }
     vec4 base = texture2D(tDiffuse, vUv);
     vec3 col = base.rgb + tint * illumination * exposure * strength;
-    // viñeta suave (mirada fotográfica, centra el ojo en la ventana)
     float d = distance(vUv, vec2(0.5, 0.48));
     col *= smoothstep(1.05, 0.42, d) * 0.35 + 0.65;
-    // grano fino animado (mata el look "render limpio")
-    float g = (hash(vUv * vec2(1920.0, 1080.0) + fract(time) * 61.7) - 0.5) * 0.028;
-    col += g;
     gl_FragColor = vec4(col, base.a);
   }
 `;
@@ -445,12 +514,11 @@ const godrayPass = new ShaderPass({
     tDiffuse: { value: null },
     tOcclusion: { value: occlusionTarget.texture },
     lightPos: { value: new THREE.Vector2(0.5, 0.5) },
-    exposure: { value: 0.62 },
+    exposure: { value: 0.4 },
     decay: { value: 0.968 },
     density: { value: 0.95 },
-    weight: { value: 0.52 },
+    weight: { value: 0.5 },
     strength: { value: 1.0 },
-    time: { value: 0 },
     tint: { value: new THREE.Vector3(1.0, 0.8, 0.52) },
   },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
@@ -472,10 +540,87 @@ function applyLightMix() {
   sun.intensity = SUN_BASE_INTENSITY * sf;
   fill.intensity = fillFor(sf);
   godrayPass.uniforms.strength.value = sf;
+  // el haz volumétrico: los paños tapan los costados pero el medio queda
+  // abierto — el haz respira con el producto (blackout casi lo apaga)
+  shaftMat.uniforms.uIntensity.value = 0.015 + 0.065 * sf;
 }
 
 // ---------------------------------------------------------------------------
-// Puntero (hover sin clic / dedo) + acelerómetro — actúan sobre la sim activa
+// Audio ambient generativo (tipo Marconi Union): pad suave con osciladores
+// detuneados + filtro + delay. Bajísimo. El movimiento de la tela abre
+// apenas el filtro y sube 1-2 dB, muy gradual. Sin assets externos.
+// ---------------------------------------------------------------------------
+let audio = null;
+let audioMuted = false;
+function initAudio() {
+  if (audio || audioMuted) return;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const master = ctx.createGain();
+    master.gain.value = 0.0;
+    master.connect(ctx.destination);
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 420;
+    filter.Q.value = 0.4;
+
+    const delay = ctx.createDelay(1.2);
+    delay.delayTime.value = 0.62;
+    const feedback = ctx.createGain();
+    feedback.gain.value = 0.38;
+    delay.connect(feedback); feedback.connect(delay);
+
+    filter.connect(master);
+    filter.connect(delay); delay.connect(master);
+
+    // acorde suave (La mayor con novena): A2, E3, C#4, B3 — voces detuneadas
+    const freqs = [110, 164.81, 277.18, 246.94];
+    const gains = [0.5, 0.34, 0.16, 0.12];
+    freqs.forEach((f, i) => {
+      [-3, 3].forEach((cents) => {
+        const osc = ctx.createOscillator();
+        osc.type = i < 2 ? 'sine' : 'triangle';
+        osc.frequency.value = f;
+        osc.detune.value = cents;
+        const g = ctx.createGain();
+        g.gain.value = gains[i] * 0.5;
+        osc.connect(g); g.connect(filter);
+        osc.start();
+      });
+    });
+
+    // respiración lenta del filtro (independiente del movimiento)
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 0.045;
+    const lfoGain = ctx.createGain();
+    lfoGain.gain.value = 90;
+    lfo.connect(lfoGain); lfoGain.connect(filter.frequency);
+    lfo.start();
+
+    // fade-in de 3s al volumen base (muy bajo)
+    master.gain.linearRampToValueAtTime(0.028, ctx.currentTime + 3);
+
+    audio = { ctx, master, filter, baseGain: 0.028, energy: 0 };
+  } catch { audio = null; }
+}
+// el movimiento de la tela modula el pad, suave y con inercia
+function audioModulate(motionEnergy) {
+  if (!audio || audioMuted) return;
+  audio.energy += (clamp(motionEnergy * 6, 0, 1) - audio.energy) * 0.04;
+  const t = audio.ctx.currentTime;
+  audio.filter.frequency.setTargetAtTime(420 + audio.energy * 520, t, 0.4);
+  audio.master.gain.setTargetAtTime(audio.baseGain * (1 + audio.energy * 0.5), t, 0.5);
+}
+muteBtn.addEventListener('click', () => {
+  audioMuted = !audioMuted;
+  muteBtn.classList.toggle('muted', audioMuted);
+  if (audio) audio.master.gain.setTargetAtTime(audioMuted ? 0 : audio.baseGain, audio.ctx.currentTime, 0.3);
+  else if (!audioMuted) initAudio();
+});
+
+// ---------------------------------------------------------------------------
+// Puntero (hover sin clic / dedo) + acelerómetro
 // ---------------------------------------------------------------------------
 const raycaster = new THREE.Raycaster();
 const curtainPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -(backZ + 0.3));
@@ -493,8 +638,9 @@ function pointerToWorld(clientX, clientY) {
   if (raycaster.ray.intersectPlane(curtainPlane, hitPoint)) return hitPoint;
   return null;
 }
+function firstGesture() { ensureMotionPermission(); initAudio(); revealPanel(); }
 canvas.addEventListener('mouseenter', (e) => {
-  ensureMotionPermission(); revealPanel();
+  firstGesture();
   const w = pointerToWorld(e.clientX, e.clientY);
   if (w) { ptr.x = ptr.px = w.x; ptr.y = ptr.py = w.y; ptr.active = true; }
 });
@@ -505,7 +651,7 @@ canvas.addEventListener('mousemove', (e) => {
 });
 canvas.addEventListener('mouseleave', () => { ptr.active = false; });
 canvas.addEventListener('touchstart', (e) => {
-  ensureMotionPermission(); revealPanel();
+  firstGesture();
   const t = e.touches[0], w = pointerToWorld(t.clientX, t.clientY);
   if (w) { ptr.x = ptr.px = w.x; ptr.y = ptr.py = w.y; ptr.active = true; }
 }, { passive: true });
@@ -535,74 +681,62 @@ function ensureMotionPermission() {
 }
 
 // ---------------------------------------------------------------------------
-// Carrusel: la cortina saliente SE DESLIZA por el barral hacia un lado y la
-// entrante llega desde el otro — la física hace el ondeo del movimiento.
+// Carrusel: cada paño se pliega hacia SU borde y sale; los nuevos entran
+// plegados desde afuera y se despliegan (cinemático, con lag por fila).
 // ---------------------------------------------------------------------------
-// La transición avanza en TIEMPO DE SIMULACIÓN (dentro de los sub-pasos de
-// física): el barral nunca salta más de SLIDE_DIST*dt por paso, a cualquier
-// framerate — sin telas enredadas en dispositivos lentos.
 let switching = false;
 let transitionState = null;
-const GATHER_SPREAD = 0.16;             // cuánto se pliega al juntarse (16% del ancho)
-const OFF_DIST = WIN_W * 0.95 + 0.7;    // corrimiento fuera de escena del paquete plegado
-const TRANSITION_SECS = 1.6;            // juntar -> salir / entrar -> desplegar
+const GATHER_SPREAD = 0.16;
+const OFF_DIST = WIN_W * 0.75 + 0.6;
+const TRANSITION_SECS = 1.5;
 
-function goTo(next, dir) {
+function goTo(next) {
   if (switching) return;
   switching = true;
   prevBtn.disabled = true; nextBtn.disabled = true;
   const to = PRODUCTS[next];
 
-  // preparar la entrante: plegada, fuera de escena, del lado opuesto al que
-  // sale la vieja. Ambas quedan en modo cinemático hasta terminar.
-  idleMesh.material.dispose();
-  idleMesh.material = makeCurtainMaterial(to);
-  idleSim.spread = GATHER_SPREAD;
-  idleSim.gatherX = dir * (W_M / 2);
-  idleSim.offsetX = dir * OFF_DIST;
-  idleSim.build();
-  idleSim.kinematic = {
-    t: 0,
-    from: { spread: GATHER_SPREAD, offsetX: dir * OFF_DIST },
-    to: { spread: 1, offsetX: 0 },
-    gatherX: dir * (W_M / 2),
-  };
-  activeSim.kinematic = {
-    t: 0,
-    from: { spread: 1, offsetX: 0 },
-    to: { spread: GATHER_SPREAD, offsetX: -dir * OFF_DIST },
-    gatherX: -dir * (W_M / 2),
-  };
-  idleMesh.visible = true;
-  idleMesh.castShadow = false;
-
+  idleSet.setMaterial(to);
+  idleSet.setVisible(true);
+  idleSet.setCastShadow(false);
+  for (const sim of idleSet.sims) {
+    sim.spread = GATHER_SPREAD;
+    sim.offsetX = sim.side * OFF_DIST;
+    sim.build();
+    sim.kinematic = { t: 0, from: { spread: GATHER_SPREAD, offsetX: sim.side * OFF_DIST }, to: { spread: 1, offsetX: 0 } };
+  }
+  for (const sim of activeSet.sims) {
+    sim.kinematic = { t: 0, from: { spread: 1, offsetX: 0 }, to: { spread: GATHER_SPREAD, offsetX: sim.side * OFF_DIST } };
+  }
   lightMix = { from: active, to, t: 0 };
-  transitionState = { next, dir, to, t: 0, outSim: activeSim, inSim: idleSim, outMesh: activeMesh, inMesh: idleMesh };
+  transitionState = { next, to };
 
   productLabel.classList.add('switching');
   setTimeout(() => { productName.textContent = to.name; productColor.textContent = to.color; productLabel.classList.remove('switching'); }, 380);
 }
 
-// avanza un sub-paso de la transición (coreografía cinemática de ambas telas)
 function stepTransition() {
   const ts = transitionState;
   if (!ts) return false;
-  ts.t = Math.min(1, ts.t + PHYS_DT / TRANSITION_SECS);
-  ts.outSim.kinematic.t = ts.t;
-  ts.inSim.kinematic.t = ts.t;
-  lightMix.t = easeInOut(ts.t);
-  return ts.t >= 1;
+  let done = true;
+  for (const set of [activeSet, idleSet]) {
+    for (const sim of set.sims) {
+      sim.kinematic.t = Math.min(1, sim.kinematic.t + PHYS_DT / TRANSITION_SECS);
+      if (sim.kinematic.t < 1) done = false;
+    }
+  }
+  lightMix.t = easeInOut(activeSet.sims[0].kinematic.t);
+  return done;
 }
 
 function finishTransition() {
   const ts = transitionState;
-  ts.outMesh.visible = false;
-  ts.inSim.kinematic = null; ts.outSim.kinematic = null; // la física libre retoma
-  ts.inSim.spread = 1; ts.inSim.offsetX = 0; ts.inSim.gatherX = 0;
+  activeSet.setVisible(false);
+  for (const sim of [...activeSet.sims, ...idleSet.sims]) sim.kinematic = null;
+  for (const sim of idleSet.sims) { sim.spread = 1; sim.offsetX = 0; }
   active = ts.to; currentIndex = ts.next;
-  activeMesh = ts.inMesh; idleMesh = ts.outMesh;
-  activeSim = ts.inSim; idleSim = ts.outSim;
-  activeMesh.castShadow = ts.to.castShadow;
+  [activeSet, idleSet] = [idleSet, activeSet];
+  activeSet.setCastShadow(ts.to.castShadow);
   lightMix = { from: ts.to, to: ts.to, t: 1 };
   transitionState = null;
   switching = false;
@@ -610,18 +744,17 @@ function finishTransition() {
   updateWhatsappLink();
   applyLightMix();
 }
-prevBtn.addEventListener('click', () => goTo((currentIndex - 1 + PRODUCTS.length) % PRODUCTS.length, -1));
-nextBtn.addEventListener('click', () => goTo((currentIndex + 1) % PRODUCTS.length, 1));
+
+prevBtn.addEventListener('click', () => goTo((currentIndex - 1 + PRODUCTS.length) % PRODUCTS.length));
+nextBtn.addEventListener('click', () => goTo((currentIndex + 1) % PRODUCTS.length));
 
 // ---------------------------------------------------------------------------
 // Steppers + WhatsApp
 // ---------------------------------------------------------------------------
 function applySize() {
-  W_M = BASE_W * clamp(anchoCm / ANCHO_DEF, 0.5, 1.6);
-  H_M = BASE_H * clamp(altoCm / ALTO_DEF, 0.45, 1.3);
-  activeSim.spread = 1; activeSim.offsetX = 0; activeSim.gatherX = 0;
-  activeSim.build();
-  if (idleMesh.visible) idleSim.build();
+  W_M = FULL_W * clamp(anchoCm / ANCHO_DEF, 0.5, 1.6);
+  H_M = (winTop - 0.02) * clamp(altoCm / ALTO_DEF, 0.45, 1.3);
+  for (const sim of activeSet.sims) { sim.spread = 1; sim.offsetX = 0; sim.build(); }
 }
 document.querySelectorAll('[data-step]').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -649,14 +782,20 @@ function revealPanel() {
 setTimeout(revealPanel, 2600);
 
 // ---------------------------------------------------------------------------
-// Resize + loop
+// Cámara en ángulo + resize
 // ---------------------------------------------------------------------------
 function resize() {
   const r = canvas.getBoundingClientRect();
   camera.aspect = r.width / r.height;
-  if (camera.aspect < 0.8) { camera.fov = 50; camera.position.set(0, 1.5, 7.2); }
-  else { camera.fov = 38; camera.position.set(0, 1.55, 5.6); }
-  camera.lookAt(0, 1.5, 0);
+  // vista en ángulo (~40°): la ventana en perspectiva, la luz cruza hacia la cámara
+  if (camera.aspect < 0.8) {
+    camera.fov = 54;
+    camera.position.set(3.4, 1.75, 5.2);
+  } else {
+    camera.fov = 42;
+    camera.position.set(3.1, 1.7, 3.9);
+  }
+  camera.lookAt(-0.45, 1.35, backZ);
   camera.updateProjectionMatrix();
   renderer.setSize(r.width, r.height, false);
   composer.setSize(r.width, r.height);
@@ -665,9 +804,9 @@ resize();
 applyLightMix();
 updateWhatsappLink();
 
-// Física con sub-pasos fijos de 1/60s: el comportamiento de la tela es
-// idéntico a cualquier framerate (un teléfono a 25fps integra más sub-pasos
-// por frame en vez de quedarse atrás del barral durante la transición).
+// ---------------------------------------------------------------------------
+// Loop con física en sub-pasos fijos (independiente del framerate)
+// ---------------------------------------------------------------------------
 const PHYS_DT = 1 / 60;
 const MAX_SUBSTEPS = 6;
 let last = performance.now();
@@ -678,15 +817,19 @@ function loop(now) {
   let transitionDone = false;
   for (let s = 0; s < steps; s++) {
     if (transitionState) transitionDone = stepTransition() || transitionDone;
-    activeSim.step(PHYS_DT, active, ptr, tiltX); // la activa (saliente durante el switch) usa SU tela
-    if (idleMesh.visible) idleSim.step(PHYS_DT, lightMix.to, null, tiltX); // la entrante, la tela nueva
+    for (const sim of activeSet.sims) sim.step(PHYS_DT, transitionState ? lightMix.from : active, ptr, tiltX);
+    if (idleSet.visible) for (const sim of idleSet.sims) sim.step(PHYS_DT, lightMix.to, null, tiltX);
   }
+  for (let i = 0; i < 2; i++) uploadGeometry(activeSet.geos[i], activeSet.sims[i]);
+  if (idleSet.visible) for (let i = 0; i < 2; i++) uploadGeometry(idleSet.geos[i], idleSet.sims[i]);
   if (transitionState) applyLightMix();
   if (transitionDone) finishTransition();
-  uploadGeometry(activeMesh === meshA ? geoA : geoB, activeSim);
-  if (idleMesh.visible) uploadGeometry(idleMesh === meshA ? geoA : geoB, idleSim);
+
+  // audio: energía de movimiento del puntero (y del tilt)
+  const motion = ptr.active ? Math.hypot(ptr.x - ptr.px, ptr.y - ptr.py) : Math.abs(tiltX) * 0.02;
+  audioModulate(motion);
+
   updateLightScreenPos();
-  godrayPass.uniforms.time.value = now / 1000;
   renderOcclusionPass();
   composer.render();
   requestAnimationFrame(loop);
