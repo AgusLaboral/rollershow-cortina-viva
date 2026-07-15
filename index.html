@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Rollershow — Cortinas tradicionales</title>
-<meta name="description" content="Blackout, Gasa y Tusor. Movés la tela con el dedo, el mouse o inclinando el teléfono, y la luz del ambiente cambia con vos. Elegí tu medida y pedila por WhatsApp.">
+<meta name="description" content="Blackout, Gasa y Tusor. Mové la tela, compará cómo filtra la luz y elegí la medida de tu cortina tradicional.">
 <meta name="theme-color" content="#090908">
 <script type="importmap">
 { "imports": {
@@ -43,7 +43,7 @@
     pointer-events:none;
     transition:bottom .5s cubic-bezier(.16,1,.3,1);
   }
-  .product-label.raised{ bottom:34%; }
+  .product-label.raised{ bottom:23%; }
   .product-label .name,
   .product-label .color{
     display:block;
@@ -73,37 +73,50 @@
 
   .nav-btn{
     position:absolute;
-    top:44%;
-    transform:translateY(-50%);
+    transform:translate(-50%,-50%);
     z-index:5;
-    width:48px; height:48px;
+    width:72px; height:72px;
     display:flex; align-items:center; justify-content:center;
     background:none; border:none;
     color:var(--ink);
     cursor:pointer;
-    opacity:.86;
-    text-shadow:0 2px 10px rgba(0,0,0,.9);
+    opacity:.94;
     transition:opacity .2s ease, transform .2s ease;
   }
-  .nav-btn:hover{ opacity:1; }
-  .nav-btn:active{ transform:translateY(-50%) scale(.92); }
+  .nav-btn::before{
+    content:"";
+    position:absolute;
+    inset:8px;
+    border:1px solid rgba(255,255,255,.46);
+    border-radius:50%;
+    background:rgba(24,22,19,.34);
+    box-shadow:0 0 24px rgba(255,205,143,.32), inset 0 0 18px rgba(255,255,255,.08);
+    backdrop-filter:blur(12px);
+    transition:background .2s ease, box-shadow .2s ease, transform .2s ease;
+  }
+  .nav-btn:hover::before{
+    background:rgba(255,225,184,.2);
+    box-shadow:0 0 34px rgba(255,194,119,.64), inset 0 0 20px rgba(255,255,255,.16);
+    transform:scale(1.06);
+  }
+  .nav-btn:active{ transform:translate(-50%,-50%) scale(.92); }
   .nav-btn:disabled{ opacity:.25; pointer-events:none; }
-  .nav-prev{ left:2%; }
-  .nav-next{ right:2%; }
-  .nav-btn svg{ width:24px; height:24px; filter:drop-shadow(0 2px 6px rgba(0,0,0,.9)); }
+  .nav-btn svg{ position:relative; z-index:1; width:34px; height:34px; filter:drop-shadow(0 2px 8px rgba(0,0,0,.85)); }
 
   .measure-panel{
     position:absolute;
     left:0; right:0; bottom:0;
     z-index:6;
-    padding:30px 6% max(24px, env(safe-area-inset-bottom));
+    width:100%;
+    padding:34px max(5vw, calc((100vw - 760px) / 2)) 24px;
     color:var(--panel-ink);
-    background:linear-gradient(to top, rgba(9,9,8,.97), rgba(9,9,8,.84) 58%, rgba(9,9,8,0));
+    background:linear-gradient(to top, rgba(10,9,8,.96), rgba(10,9,8,.78) 62%, rgba(10,9,8,0));
+    backdrop-filter:blur(10px);
     display:flex;
     flex-wrap:wrap;
-    align-items:flex-end;
-    justify-content:space-between;
-    gap:20px;
+    align-items:center;
+    justify-content:center;
+    gap:52px;
     transform:translateY(18px);
     opacity:0;
     pointer-events:none;
@@ -111,10 +124,10 @@
   }
   .measure-panel.visible{ opacity:1; transform:translateY(0); pointer-events:auto; }
 
-  .stepper-row{ display:flex; gap:16px; }
+  .stepper-row{ display:flex; gap:28px; }
   .stepper{ display:flex; flex-direction:column; gap:8px; }
   .stepper .stepper-label{
-    font-size:10.5px;
+    font-size:11px;
     letter-spacing:.12em;
     text-transform:uppercase;
     color:var(--panel-muted);
@@ -123,14 +136,14 @@
     display:flex;
     align-items:baseline;
     gap:0;
-    border-bottom:1px solid rgba(243,239,232,.38);
-    padding-bottom:7px;
+    border-bottom:1px solid rgba(243,239,232,.5);
+    padding-bottom:5px;
   }
   .stepper button{
     background:none;
     border:none;
     color:var(--panel-ink);
-    font-size:19px;
+    font-size:22px;
     line-height:1;
     cursor:pointer;
     width:44px;
@@ -141,19 +154,20 @@
   .stepper button:hover{ opacity:1; }
   .stepper .value{
     font-variant-numeric:tabular-nums;
-    font-size:21px;
+    font-size:26px;
     min-width:2.2ch;
     text-align:center;
   }
-  .stepper .unit{ font-size:11px; color:var(--panel-muted); }
+  .stepper .unit{ font-size:12px; color:var(--panel-muted); margin-left:2px; }
 
   .cta{
     background:var(--accent);
     color:var(--accent-ink);
     border:none;
-    padding:15px 24px;
+    min-height:52px;
+    padding:15px 26px;
     border-radius:3px;
-    font-size:14.5px;
+    font-size:15px;
     font-weight:600;
     text-decoration:none;
     display:inline-flex;
@@ -165,7 +179,7 @@
   }
   .cta:hover{ transform:translateY(-1px); box-shadow:0 10px 28px rgba(198,58,33,.45); }
   .cta:active{ transform:translateY(0); }
-  .cta svg{ width:17px; height:17px; }
+  .cta svg{ width:18px; height:18px; }
 
   .hint{
     position:absolute;
@@ -207,11 +221,34 @@
   }
 
   @media (max-width:640px){
+    .product-label.raised{ bottom:34%; }
     .product-label .name{
       text-shadow:0 2px 14px rgba(0,0,0,.95), 0 1px 3px #000;
     }
+    .nav-btn{ width:60px; height:60px; }
+    .nav-btn::before{ inset:7px; }
+    .nav-btn svg{ width:29px; height:29px; }
     .measure-panel{
+      left:0; right:0; bottom:0;
+      width:100%;
+      padding:28px 6% max(24px, env(safe-area-inset-bottom));
       background:linear-gradient(to top, rgba(9,9,8,.985), rgba(9,9,8,.9) 62%, rgba(9,9,8,0));
+      border:0;
+      backdrop-filter:none;
+      transform:translateY(18px);
+      gap:18px;
+    }
+    .measure-panel.visible{ transform:translateY(0); }
+    .stepper-row{ width:100%; justify-content:space-between; gap:18px; }
+    .stepper{ flex:1; }
+    .stepper .controls{ justify-content:space-between; }
+    .cta{ width:100%; justify-content:center; }
+  }
+  @media (min-width:641px){
+    .product-label,
+    .product-label.raised{
+      top:17%;
+      bottom:auto;
     }
   }
 </style>
@@ -261,9 +298,10 @@
         </div>
       </div>
 
-      <a class="cta" id="ctaWhatsapp" href="#" target="_blank" rel="noopener" aria-label="Pedir presupuesto por WhatsApp">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.44 1.32 4.94L2 22l5.29-1.39a9.87 9.87 0 0 0 4.75 1.21h.01c5.46 0 9.9-4.45 9.9-9.91C21.95 6.45 17.5 2 12.04 2zm5.8 14.03c-.24.68-1.4 1.3-1.93 1.38-.5.08-1.11.11-1.79-.11-.41-.13-.94-.3-1.62-.6-2.85-1.23-4.71-4.1-4.85-4.29-.14-.19-1.15-1.53-1.15-2.92s.72-2.07.98-2.35c.25-.28.55-.35.74-.35.18 0 .37 0 .53.01.17.01.4-.06.62.48.24.58.81 2 .88 2.15.07.15.11.32.02.51-.09.19-.14.31-.28.47-.14.16-.29.36-.42.48-.14.13-.28.28-.12.55.16.28.71 1.19 1.53 1.94 1.05.96 1.94 1.26 2.21 1.4.28.14.44.12.6-.07.17-.19.71-.84.9-1.13.19-.28.37-.24.62-.14.25.09 1.6.77 1.87.91.27.14.45.21.51.32.07.12.07.68-.17 1.36z"/></svg>
-      Pedir por WhatsApp</a>
+      <a class="cta" id="ctaQuote" href="https://www.rollershow.com.ar/cotizar/tradicionales" aria-label="Cotizar tu cortina tradicional en RollerShow">
+        Cotizá tu cortina
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m14 6 6 6-6 6"/></svg>
+      </a>
     </div>
   </main>
 

@@ -33,10 +33,10 @@ const nextBtn = document.getElementById('nextBtn');
 const measurePanel = document.getElementById('measurePanel');
 const anchoValue = document.getElementById('anchoValue');
 const altoValue = document.getElementById('altoValue');
-const ctaWhatsapp = document.getElementById('ctaWhatsapp');
+const ctaQuote = document.getElementById('ctaQuote');
 const muteBtn = document.getElementById('muteBtn');
 
-const WHATSAPP_NUMBER = '5491140813223';
+const QUOTE_URL = 'https://www.rollershow.com.ar/cotizar/tradicionales';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 const easeInOut = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
@@ -62,7 +62,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.12;
+renderer.toneMappingExposure = 1.18;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x090908);
@@ -92,7 +92,13 @@ function windowFromCm(ancho, alto) {
 
 // Paredes y piso claros, sin textura cargada: superficie limpia que recibe luz
 const ROOM = { w: 80, h: 28 };
-const wallMat = new THREE.MeshStandardMaterial({ color: 0x11100f, roughness: 0.91, metalness: 0.01 });
+const wallMat = new THREE.MeshPhysicalMaterial({
+  color: 0x4c4944,
+  roughness: 0.58,
+  metalness: 0,
+  clearcoat: 0.18,
+  clearcoatRoughness: 0.36,
+});
 const backWall = new THREE.Mesh(new THREE.BufferGeometry(), wallMat);
 backWall.position.z = backZ;
 backWall.receiveShadow = true;
@@ -110,14 +116,64 @@ new RGBELoader().load('img/env/sunset.hdr', (hdr) => {
 // Piso claro, satinado apenas: refleja suave la luz (sin ruido, sin puntitos)
 const floor = new THREE.Mesh(
   new THREE.PlaneGeometry(200, 200),
-  new THREE.MeshStandardMaterial({ color: 0x171512, roughness: 0.48, metalness: 0.08 })
+  new THREE.MeshPhysicalMaterial({
+    color: 0x77716a,
+    roughness: 0.24,
+    metalness: 0.02,
+    clearcoat: 0.68,
+    clearcoatRoughness: 0.18,
+  })
 );
 floor.rotation.x = -Math.PI / 2;
 floor.position.set(0, 0, 10);
 floor.receiveShadow = true;
 scene.add(floor);
 
-const frameMat = new THREE.MeshStandardMaterial({ color: 0x3a352f, roughness: 0.58, metalness: 0.05 });
+// Una mesa lateral y una pieza cerámica hacen visible el rebote de la ventana.
+// Son superficies de lectura lumínica, no decoración protagonista.
+const roomObjectMat = new THREE.MeshPhysicalMaterial({
+  color: 0x34302c,
+  roughness: 0.16,
+  metalness: 0.08,
+  clearcoat: 0.82,
+  clearcoatRoughness: 0.12,
+});
+const tableTop = new THREE.Mesh(new THREE.CylinderGeometry(0.74, 0.78, 0.1, 48), roomObjectMat);
+const tableStem = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 0.44, 24), roomObjectMat);
+const tableBase = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.39, 0.07, 40), roomObjectMat);
+tableTop.position.set(-2.85, 0.49, 0.72);
+tableStem.position.set(-2.85, 0.24, 0.72);
+tableBase.position.set(-2.85, 0.035, 0.72);
+for (const part of [tableTop, tableStem, tableBase]) {
+  part.castShadow = true;
+  part.receiveShadow = true;
+  scene.add(part);
+}
+const vaseProfile = [
+  [0.04, 0], [0.15, 0.025], [0.2, 0.11], [0.18, 0.31],
+  [0.12, 0.48], [0.09, 0.56], [0.1, 0.6],
+].map(([x, y]) => new THREE.Vector2(x, y));
+const ceramic = new THREE.Mesh(
+  new THREE.LatheGeometry(vaseProfile, qualityTier === 'full' ? 32 : 18),
+  new THREE.MeshPhysicalMaterial({
+    color: 0xb9a38d,
+    roughness: 0.2,
+    metalness: 0,
+    clearcoat: 0.72,
+    clearcoatRoughness: 0.16,
+  })
+);
+ceramic.position.set(-2.75, 0.54, 0.7);
+ceramic.castShadow = true;
+scene.add(ceramic);
+
+const frameMat = new THREE.MeshPhysicalMaterial({
+  color: 0xf4f2ec,
+  roughness: 0.34,
+  metalness: 0,
+  clearcoat: 0.42,
+  clearcoatRoughness: 0.24,
+});
 const glassMat = new THREE.MeshBasicMaterial({ color: 0xfff0cf, transparent: true, opacity: 0.16, depthWrite: false });
 const rodMat = new THREE.MeshStandardMaterial({ color: 0x57493c, roughness: 0.5, metalness: 0.45 });
 function makeGlowTexture() {
@@ -326,6 +382,11 @@ function buildWindow() {
   areaLight.position.set(0, winY + winH / 2, backZ + 0.05);
   areaLight.lookAt(0, winY + winH / 2, 10);
   if (LATE.sun) LATE.sun.target.position.set(-winW * 0.2, winY + winH * 0.25, 2.2);
+  if (LATE.windowProjector) {
+    LATE.windowProjector.position.set(0, winY + winH * 0.58, backZ + 0.08);
+    LATE.windowProjector.target.position.set(-2.75, 0.24, 0.82);
+    LATE.windowProjector.target.updateMatrixWorld();
+  }
   if (LATE.glowPlane) {
     LATE.glowPlane.scale.set(winW + 0.08, winH + 0.08, 1);
     LATE.glowPlane.position.set(0, winY + winH / 2, backZ - 0.02);
@@ -351,17 +412,26 @@ sun.shadow.camera.top = 4; sun.shadow.camera.bottom = -4;
 sun.shadow.bias = -0.002;
 scene.add(sun, sun.target);
 LATE.sun = sun;
-buildWindow(); // re-apunta el sol y calza el glow de oclusión ahora que existen
+
+// Proyección desde el vano: convierte la ventana en una fuente que dibuja
+// reflejos sobre piso, banco y cerámica, como una pantalla luminosa real.
+const windowProjector = new THREE.SpotLight(0xffc27a, 0, 22, 0.72, 0.78, 1.35);
+windowProjector.position.set(0, winY + winH * 0.58, backZ + 0.08);
+windowProjector.target.position.set(-2.75, 0.24, 0.82);
+windowProjector.castShadow = false;
+scene.add(windowProjector, windowProjector.target);
+LATE.windowProjector = windowProjector;
+buildWindow(); // re-apunta sol, proyector y oclusión ahora que existen
 
 const keyFill = new THREE.SpotLight(0xfff0d8, 9, 18, 0.8, 0.7, 1.6);
 keyFill.position.set(-1.8, 2.4, 3.4);
 keyFill.target.position.set(0, 1.4, backZ + 0.3);
 scene.add(keyFill, keyFill.target);
 
-const FILL_BASE_INTENSITY = 1.35;
+const FILL_BASE_INTENSITY = 1.2;
 const fill = new THREE.HemisphereLight(0xfdf3e3, 0x8a8378, FILL_BASE_INTENSITY);
 scene.add(fill);
-const fillFor = (sf) => FILL_BASE_INTENSITY * lerp(0.52, 1, sf);
+const fillFor = (sf) => FILL_BASE_INTENSITY * lerp(0.34, 1.18, sf);
 
 // (el haz volumétrico se construye en buildWindow)
 
@@ -372,13 +442,13 @@ const fillFor = (sf) => FILL_BASE_INTENSITY * lerp(0.52, 1, sf);
 const PRODUCTS = [
   { name: 'Blackout', color: 'Blanco', tex: 'img/fabric/blackout.jpg', normal: 'img/fabric/blackout-nor.png',
     stiffness: 0.97, gravity: 7.4, friction: 0.962, influence: 0.34, dragCap: 0.028, roughness: 0.85,
-    opacity: 1, castShadow: true, shadowBlock: 1, tint: 0xf2f0eb, sunFactor: 0, repeat: 1.6, colorMap: false },
+    opacity: 1, castShadow: true, shadowBlock: 1, tint: 0xf2f0eb, sunFactor: 0, backlight: 0.01, repeat: 1.6, colorMap: false },
   { name: 'Gasa', color: 'Beige', tex: 'img/fabric/gasa.jpg', normal: 'img/fabric/gasa-nor.png',
     stiffness: 0.93, gravity: 6.2, friction: 0.968, influence: 0.42, dragCap: 0.04, roughness: 0.6,
-    opacity: 0.995, castShadow: true, shadowBlock: 0.88, tint: 0xe3d1b5, sunFactor: 0.08, repeat: 1.8 },
+    opacity: 0.94, castShadow: true, shadowBlock: 0.34, tint: 0xe8d7bc, sunFactor: 0.62, backlight: 0.16, repeat: 1.8 },
   { name: 'Tusor', color: 'Natural', tex: 'img/fabric/tusor.jpg', normal: 'img/fabric/tusor-nor.png',
     stiffness: 0.95, gravity: 6.8, friction: 0.965, influence: 0.38, dragCap: 0.034, roughness: 0.8,
-    opacity: 1, castShadow: true, shadowBlock: 0.96, tint: 0xc4b395, sunFactor: 0.02, repeat: 1.7 },
+    opacity: 0.99, castShadow: true, shadowBlock: 0.78, tint: 0xcbbba4, sunFactor: 0.2, backlight: 0.07, repeat: 1.7 },
 ];
 
 const texLoader = new THREE.TextureLoader();
@@ -400,12 +470,15 @@ function makeCurtainMaterial(p) {
     normalMap: fabricTex(p.normal, false, p.repeat * 0.55, p.repeat),
     normalScale: new THREE.Vector2(0.5, 0.5),
     color: p.tint,
+    emissive: p.tint,
+    emissiveIntensity: p.backlight,
     roughness: p.roughness,
     metalness: 0,
     transparent: true,
     opacity: p.opacity,
     side: THREE.DoubleSide,
   });
+  material.userData.shadowBlock = p.shadowBlock;
   return material;
 }
 
@@ -652,7 +725,7 @@ function renderOcclusionPass() {
     occSwap.set(o, o.material);
     if (curtainMeshes.has(o)) {
       const occMat = occCurtainMats.get(o);
-      occMat.opacity = o.material.opacity;
+      occMat.opacity = o.material.userData.shadowBlock ?? o.material.opacity;
       o.material = occMat;
     }
     else o.material = occOpaque;
@@ -732,6 +805,23 @@ function updateLightScreenPos() {
   godrayPass.uniforms.lightPos.value.set(lightProjected.x * 0.5 + 0.5, lightProjected.y * 0.5 + 0.5);
 }
 
+const navLeftWorld = new THREE.Vector3();
+const navRightWorld = new THREE.Vector3();
+function updateNavScreenPosition() {
+  const r = canvas.getBoundingClientRect();
+  const y = CURTAIN_BOTTOM + H_M * 0.55;
+  navLeftWorld.set(-FULL_W * 0.61, y, backZ + 0.35).project(camera);
+  navRightWorld.set(FULL_W * 0.61, y, backZ + 0.35).project(camera);
+  const place = (button, point) => {
+    const x = clamp((point.x * 0.5 + 0.5) * r.width, 40, r.width - 40);
+    const top = clamp((-point.y * 0.5 + 0.5) * r.height, 74, r.height - 170);
+    button.style.left = `${x}px`;
+    button.style.top = `${top}px`;
+  };
+  place(prevBtn, navLeftWorld);
+  place(nextBtn, navRightWorld);
+}
+
 function applyLightMix() {
   const t = lightMix.t;
   const transmission = lerp(lightMix.from.sunFactor, lightMix.to.sunFactor, t);
@@ -765,14 +855,18 @@ function applyLightMix() {
   // directa. Blackout tiene transmisión cero: nunca pasa luz por su superficie.
   const weaveShift = transmission > 0 ? motion * 0.24 : 0;
   const sf = clamp(transmission + (1 - transmission) * opening * 1.15 + weaveShift, 0, 1);
-  sun.intensity = SUN_BASE_INTENSITY * sf * 0.58;
-  keyFill.intensity = 1.25 + 4.2 * sf;
-  fill.intensity = fillFor(sf);
-  godrayPass.uniforms.strength.value = 0.55 + 2.8 * sf;
+  // Compresión suave de altas luces: la Gasa sigue siendo muy luminosa sin
+  // quemar marco, textura y superficies cuando el paño se abre por completo.
+  const lightLevel = 1 - Math.exp(-sf * 1.45);
+  sun.intensity = SUN_BASE_INTENSITY * lightLevel * 0.72;
+  keyFill.intensity = 0.55 + 2.5 * lightLevel;
+  fill.intensity = fillFor(lightLevel);
+  godrayPass.uniforms.strength.value = 0.38 + 2.1 * lightLevel;
   shaftMat.uniforms.uIntensity.value = 0;
-  bloomPass.strength = 0.14 + 0.72 * sf;
-  areaLight.intensity = 0.06 + 1.65 * sf;
-  LATE.hazeStrength = sf;
+  bloomPass.strength = 0.18 + 0.76 * lightLevel;
+  areaLight.intensity = 0.18 + 3.4 * lightLevel;
+  windowProjector.intensity = 0.12 + 13 * lightLevel;
+  LATE.hazeStrength = lightLevel;
 }
 
 // ---------------------------------------------------------------------------
@@ -971,7 +1065,7 @@ function finishTransition() {
   transitionState = null;
   switching = false;
   prevBtn.disabled = false; nextBtn.disabled = false;
-  updateWhatsappLink();
+  updateQuoteLink();
   applyLightMix();
 }
 
@@ -979,7 +1073,7 @@ prevBtn.addEventListener('click', () => goTo((currentIndex - 1 + PRODUCTS.length
 nextBtn.addEventListener('click', () => goTo((currentIndex + 1) % PRODUCTS.length));
 
 // ---------------------------------------------------------------------------
-// Steppers + WhatsApp
+// Steppers + cotizador RollerShow
 // ---------------------------------------------------------------------------
 function applySize() {
   // la VENTANA y la cortina se reconstruyen juntas con las medidas reales
@@ -1000,13 +1094,11 @@ document.querySelectorAll('[data-step]').forEach((btn) => {
     if (btn.dataset.step === 'ancho') { anchoCm = clamp(anchoCm + dir * 10, ANCHO_MIN, ANCHO_MAX); anchoValue.textContent = anchoCm; }
     else { altoCm = clamp(altoCm + dir * 10, ALTO_MIN, ALTO_MAX); altoValue.textContent = altoCm; }
     applySize();
-    updateWhatsappLink();
+    updateQuoteLink();
   });
 });
-function updateWhatsappLink() {
-  const p = PRODUCTS[currentIndex];
-  const msg = `Hola! Quiero cotizar una cortina ${p.name} ${p.color} de ${anchoCm}x${altoCm}cm`;
-  ctaWhatsapp.href = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(msg)}`;
+function updateQuoteLink() {
+  ctaQuote.href = QUOTE_URL;
 }
 
 let revealed = false;
@@ -1058,7 +1150,7 @@ window.addEventListener('mousemove', (e) => {
   parTY = (e.clientY / window.innerHeight) * 2 - 1;
 });
 applyLightMix();
-updateWhatsappLink();
+updateQuoteLink();
 
 // ---------------------------------------------------------------------------
 // Loop con física en sub-pasos fijos (independiente del framerate)
@@ -1103,6 +1195,7 @@ function loop(now) {
   camera.lookAt(camLook);
 
   updateLightScreenPos();
+  updateNavScreenPosition();
   renderOcclusionPass();
   composer.render();
   requestAnimationFrame(loop);
@@ -1153,6 +1246,6 @@ window.__cortina = {
     anchoValue.textContent = anchoCm;
     altoValue.textContent = altoCm;
     applySize();
-    updateWhatsappLink();
+    updateQuoteLink();
   },
 };

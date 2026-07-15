@@ -25,7 +25,8 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
   - **God-rays reales** (radial blur clásico): pase de oclusión a render target
     chico donde TODO se pinta negro salvo un plano brillante en el hueco de la
     ventana (layer 1, `glowPlane`); cada paño usa su propio material de oclusión
-    durante el crossfade. Blackout transmite 0; Gasa 8%; Tusor 2%. El shader
+    durante el crossfade. Blackout bloquea 100%; Tusor deja un nivel
+    intermedio; Gasa transmite mucha luz. El shader
     (`GODRAY_FRAG`) acumula muestras radiales desde el centro de la ventana.
   - HDRI fotográfico `img/env/sunset.hdr` (Poly Haven venice_sunset 1k, CC0):
     se usa sólo como IBL suave (`scene.environment`). El fondo visible es
@@ -48,6 +49,10 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
   animados (full/lite). El plano con fBm queda sin intensidad para evitar las
   diagonales rectas que Agus rechazó. No resolver con blur global: destruiría
   pliegues y textura.
+- **Receptores de luz**: fondo oscuro no implica materiales negros. Pared y
+  piso usan MeshPhysical claro/medio con clearcoat; un SpotLight nace en la
+  ventana y proyecta sobre piso, mesa lateral y cerámica. La mesa no es adorno:
+  hace visible el rebote especular. La carpintería argentina queda blanca.
 - **Texturas**: tileables chicas que se repiten (pedido de Agus: livianas pero
   detalladas). Telas: `img/tela-*.png` (gpt-image-1 + mirror-tiling en
   `scripts/generate-assets.mjs`) + normal maps derivados
@@ -60,10 +65,10 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - **Carrusel**: 2 sets de 2 paños (4 mallas) con física propia; crossfade de
   opacity + lerp de parámetros físicos y de luz (`sunFactor` → sol, fill,
   god-rays) en ~560ms. Blackout Blanco / Gasa Beige / Tusor Natural.
-- **Medidas → WhatsApp**: steppers (60-300 x 60-260cm, paso 10) reconstruyen
+- **Medidas → cotizador**: steppers (60-300 x 60-260cm, paso 10) reconstruyen
   la malla (`applySize()`); debajo de 200 cm, ventana y cortina quedan elevadas
   con antepecho; desde 200 cm pasan a puerta-ventana al piso. CTA
-  `wa.me/5491140813223` con producto+medidas.
+  `https://www.rollershow.com.ar/cotizar/tradicionales`. No derivar directo a WhatsApp.
   Aparecen tras la primera interacción (o 2.6s), nunca antes (regla de Agus:
   no pedir nada antes de la acción).
 
@@ -90,11 +95,12 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-15 (ronda r35)
+## Estado al 2026-07-15 (ronda r36)
 
-Hecho: ambiente negro, HDR sólo como IBL, fuente de ventana completa, bloom,
-god-rays y bruma orgánica animada. Blackout tiene transmisión cero; Gasa y
-Tusor son cubrientes y proyectan oclusión parcial. El barral queda detrás del
+Hecho: ambiente negro con superficies reflectantes, HDR sólo como IBL, fuente
+de ventana completa, proyector cálido, bloom, god-rays y bruma orgánica.
+Blackout tiene transmisión cero, Tusor intermedia y Gasa alta; la oclusión usa
+`shadowBlock`, separada de la opacidad visual. El barral queda detrás del
 ancho y del borde superior de la tela. La pared y el piso son de 80/200 unidades
 para que sus límites no entren en cámara. A 60-190 cm funciona como ventana
 elevada; a partir de 200 cm como puerta-ventana al piso.
@@ -104,13 +110,13 @@ sólo cambian DPR, límite de píxeles, shadow map, resolución/muestras del pas
 topología de tela, anisotropía y cantidad de capas. Overrides QA:
 `?quality=full` / `?quality=lite`.
 
-QA r35: Playwright/Chrome recorrió carrusel real Blackout→Gasa, drag, steppers,
-WhatsApp y alturas 60/200 en mobile+desktop. Chrome acelerado por RTX 2060 Super
+QA r36: Playwright/Chrome recorrió carrusel real Blackout→Gasa, drag, steppers,
+cotizador y alturas 60/200 en mobile+desktop. Chrome acelerado por RTX 2060 Super
 midió 144 FPS en tier full. Headless por software dio 2/11 FPS y no se usa como
 medición absoluta. Capturas `r35-*` en `_scratch/`.
 
 Pendiente / ideas anotadas:
-- Juicio visual final de Agus sobre la ronda r35 (screenshots en `_scratch/`).
+- Juicio visual final de Agus sobre la ronda r36 (screenshots en `_scratch/`).
 - Performance en un teléfono físico de gama media/baja; el tier lite ya baja
   resolución/muestras/capas sin cambiar el producto.
 - Cada push a main actualiza Pages; verificar el live con captura post-push.
