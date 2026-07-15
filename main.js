@@ -90,7 +90,7 @@ function windowFromCm(ancho, alto) {
   ROD_Y = winTop + 0.2;
 }
 
-// Paredes y piso claros, sin textura cargada: superficie limpia que recibe luz
+// Paredes amplias y neutras: superficie limpia que recibe luz
 const ROOM = { w: 80, h: 28 };
 const wallMat = new THREE.MeshPhysicalMaterial({
   color: 0x4c4944,
@@ -113,15 +113,31 @@ new RGBELoader().load('img/env/sunset.hdr', (hdr) => {
   scene.environmentRotation = new THREE.Euler(0, ENV_ROT, 0);
 });
 
-// Piso claro, satinado apenas: refleja suave la luz (sin ruido, sin puntitos)
+// Piso de madera PBR real. El color y el relieve provienen de mapas CC0:
+// nada de gris plano ni clearcoat alto que lo convierta en una placa metalica.
+const surfaceLoader = new THREE.TextureLoader();
+const floorColorMap = surfaceLoader.load('img/env/wood_diff.jpg');
+const floorNormalMap = surfaceLoader.load('img/env/wood_nor.jpg');
+for (const texture of [floorColorMap, floorNormalMap]) {
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  // La geometria mide 200 unidades: este repeat deja tablas de escala real
+  // dentro del encuadre sin evidenciar el mosaico de la textura.
+  texture.repeat.set(40, 40);
+  texture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), qualityTier === 'full' ? 8 : 2);
+}
+floorColorMap.colorSpace = THREE.SRGBColorSpace;
 const floor = new THREE.Mesh(
   new THREE.PlaneGeometry(200, 200),
   new THREE.MeshPhysicalMaterial({
-    color: 0x77716a,
-    roughness: 0.24,
-    metalness: 0.02,
-    clearcoat: 0.68,
-    clearcoatRoughness: 0.18,
+    map: floorColorMap,
+    normalMap: floorNormalMap,
+    normalScale: new THREE.Vector2(0.38, 0.38),
+    color: 0xffffff,
+    roughness: 0.42,
+    metalness: 0,
+    clearcoat: 0.06,
+    clearcoatRoughness: 0.62,
+    envMapIntensity: 0.8,
   })
 );
 floor.rotation.x = -Math.PI / 2;
