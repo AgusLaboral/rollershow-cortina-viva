@@ -5,6 +5,8 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
+import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
 
 // ============================================================================
 // v5 — Dirección de Agus:
@@ -38,12 +40,13 @@ const WHATSAPP_NUMBER = '5491140813223';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 const easeInOut = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const isMobile = matchMedia('(max-width:640px)').matches;
 
 // ---------------------------------------------------------------------------
 // Renderer / cámara
 // ---------------------------------------------------------------------------
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isMobile ? 1.5 : 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -53,7 +56,6 @@ renderer.toneMappingExposure = 1.18;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xc9c2b6);
 
-const isMobile = matchMedia('(max-width:640px)').matches;
 const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 80);
 
 // ---------------------------------------------------------------------------
@@ -62,23 +64,23 @@ const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 80);
 // nítido en el piso). La puerta-ventana va del piso al dintel, en dos hojas
 // con grilla de vidrios — los parantes proyectan la sombra en grilla.
 // ---------------------------------------------------------------------------
-const WIN_W = 2.6, WIN_Y = 0.02, WIN_H = 2.72;
 const backZ = -2.2;
-const winTop = WIN_Y + WIN_H;
+// Las medidas conservan su proporción real, pero la escala escenográfica se
+// normaliza para que el producto siga siendo protagonista en el valor inicial.
+// Ventana, marco, barral, luz y cortina se reconstruyen juntos.
+let winW = 2.6, winH = 2.72, winY = 0.02, winTop = 2.74, ROD_Y = 2.94;
+function windowFromCm(ancho, alto) {
+  winW = 2.6 * clamp(ancho / 120, 0.65, 1.7);
+  winH = 2.72 * clamp(alto / 150, 0.55, 1.45);
+  winY = 0.02;
+  winTop = winY + winH;
+  ROD_Y = winTop + 0.2;
+}
 
 // Paredes y piso claros, sin textura cargada: superficie limpia que recibe luz
 const ROOM = { w: 30, h: 12 };
 const wallMat = new THREE.MeshStandardMaterial({ color: 0xcfc9bf, roughness: 0.95, metalness: 0 });
-const wallShape = new THREE.Shape();
-wallShape.moveTo(-ROOM.w / 2, 0); wallShape.lineTo(ROOM.w / 2, 0);
-wallShape.lineTo(ROOM.w / 2, ROOM.h); wallShape.lineTo(-ROOM.w / 2, ROOM.h);
-wallShape.closePath();
-const wallHole = new THREE.Path();
-wallHole.moveTo(-WIN_W / 2, WIN_Y); wallHole.lineTo(WIN_W / 2, WIN_Y);
-wallHole.lineTo(WIN_W / 2, winTop); wallHole.lineTo(-WIN_W / 2, winTop);
-wallHole.closePath();
-wallShape.holes.push(wallHole);
-const backWall = new THREE.Mesh(new THREE.ShapeGeometry(wallShape), wallMat);
+const backWall = new THREE.Mesh(new THREE.BufferGeometry(), wallMat);
 backWall.position.z = backZ;
 backWall.receiveShadow = true;
 backWall.castShadow = true;
@@ -106,42 +108,9 @@ floor.position.set(0, 0, 10);
 floor.receiveShadow = true;
 scene.add(floor);
 
-// Puerta-ventana blanca de dos hojas con grilla de paños (estilo referencia)
 const frameMat = new THREE.MeshStandardMaterial({ color: 0xf2efe8, roughness: 0.55, metalness: 0.05 });
-const F = 0.06;
-function frameBar(w, h, d, x, y, z) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), frameMat);
-  m.position.set(x, y, z);
-  m.castShadow = true;
-  scene.add(m);
-  return m;
-}
-// marco perimetral
-frameBar(WIN_W + F * 2, F, 0.14, 0, winTop + F / 2, backZ);
-frameBar(WIN_W + F * 2, F, 0.14, 0, WIN_Y - F / 2 + 0.01, backZ);
-frameBar(F, WIN_H + F * 2, 0.14, -WIN_W / 2 - F / 2, WIN_Y + WIN_H / 2, backZ);
-frameBar(F, WIN_H + F * 2, 0.14, WIN_W / 2 + F / 2, WIN_Y + WIN_H / 2, backZ);
-// parante central (división de las dos hojas, un poco más grueso)
-frameBar(F * 1.3, WIN_H, 0.12, 0, WIN_Y + WIN_H / 2, backZ);
-// grilla de cada hoja: 1 parante vertical y 3 travesaños => 2x4 vidrios por hoja
-const MUNT = F * 0.5;
-for (const side of [-1, 1]) {
-  const cx = side * WIN_W / 4; // centro de la hoja
-  frameBar(MUNT, WIN_H, 0.09, cx, WIN_Y + WIN_H / 2, backZ); // vertical
-  for (let r = 1; r <= 3; r++) {
-    frameBar(WIN_W / 2 - F, MUNT, 0.09, cx, WIN_Y + (WIN_H / 4) * r, backZ);
-  }
-}
-
-const glass = new THREE.Mesh(
-  new THREE.PlaneGeometry(WIN_W - 0.02, WIN_H - 0.02),
-  new THREE.MeshBasicMaterial({ color: 0xfff0cf, transparent: true, opacity: 0.16, depthWrite: false })
-);
-glass.renderOrder = 1;
-glass.position.set(0, WIN_Y + WIN_H / 2, backZ + 0.012);
-scene.add(glass);
-
-// gradiente radial cálido: el "afuera" luminoso que se ve por el vidrio
+const glassMat = new THREE.MeshBasicMaterial({ color: 0xfff0cf, transparent: true, opacity: 0.16, depthWrite: false });
+const rodMat = new THREE.MeshStandardMaterial({ color: 0x57493c, roughness: 0.5, metalness: 0.45 });
 function makeGlowTexture() {
   const c = document.createElement('canvas');
   c.width = c.height = 256;
@@ -156,25 +125,124 @@ function makeGlowTexture() {
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
-const outsideGlow = new THREE.Mesh(
-  new THREE.PlaneGeometry(9, 7),
-  new THREE.MeshBasicMaterial({ map: makeGlowTexture(), toneMapped: false })
-);
-outsideGlow.position.set(0, WIN_Y + WIN_H / 2, backZ - 1.3);
-scene.add(outsideGlow);
+const glowTexture = makeGlowTexture();
 
-const rodMat = new THREE.MeshStandardMaterial({ color: 0x57493c, roughness: 0.5, metalness: 0.45 });
-const ROD_Y = winTop + 0.22;
-const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, WIN_W * 1.42, 24), rodMat);
-rod.rotation.z = Math.PI / 2;
-rod.position.set(0, ROD_Y, backZ + 0.28);
-rod.castShadow = true;
-scene.add(rod);
-[-WIN_W * 0.71, WIN_W * 0.71].forEach((x) => {
-  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.032, 16, 16), rodMat);
-  cap.position.set(x, ROD_Y, backZ + 0.28);
-  scene.add(cap);
+// Haz volumétrico: material global; la geometría se reconstruye con la ventana
+const shaftMat = new THREE.ShaderMaterial({
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  side: THREE.DoubleSide,
+  uniforms: {
+    uIntensity: { value: 0.16 },
+    uColor: { value: new THREE.Color(1.0, 0.78, 0.5) },
+  },
+  vertexShader: [
+    'attribute float aAlpha;',
+    'varying float vAlpha;',
+    'void main(){ vAlpha = aAlpha; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  ].join('\n'),
+  fragmentShader: [
+    'uniform float uIntensity;',
+    'uniform vec3 uColor;',
+    'varying float vAlpha;',
+    'void main(){ gl_FragColor = vec4(uColor, vAlpha * uIntensity); }',
+  ].join('\n'),
 });
+const SUN_DIR = new THREE.Vector3(-1.5, -1.5, 5.6).normalize(); // direccion fija del sol (afuera -> adentro)
+
+// RectAreaLight: LA luz físicamente correcta para una ventana — luz de área
+// suave que envuelve la tela. (Tecnología que faltaba.)
+RectAreaLightUniformsLib.init();
+const areaLight = new THREE.RectAreaLight(0xffe3ba, 4, 1, 1);
+scene.add(areaLight);
+
+const windowGroup = new THREE.Group();
+scene.add(windowGroup);
+let glass = null;
+const LATE = {}; // refs que se crean más abajo (sun, glowPlane de oclusión...)
+
+function buildWindow() {
+  for (const child of [...windowGroup.children]) {
+    windowGroup.remove(child);
+    if (child.geometry) child.geometry.dispose();
+  }
+  const wallShape = new THREE.Shape();
+  wallShape.moveTo(-ROOM.w / 2, 0); wallShape.lineTo(ROOM.w / 2, 0);
+  wallShape.lineTo(ROOM.w / 2, ROOM.h); wallShape.lineTo(-ROOM.w / 2, ROOM.h);
+  wallShape.closePath();
+  const hole = new THREE.Path();
+  hole.moveTo(-winW / 2, winY); hole.lineTo(winW / 2, winY);
+  hole.lineTo(winW / 2, winTop); hole.lineTo(-winW / 2, winTop);
+  hole.closePath();
+  wallShape.holes.push(hole);
+  backWall.geometry.dispose();
+  backWall.geometry = new THREE.ShapeGeometry(wallShape);
+
+  const F = 0.06;
+  const bar = (w, h, d, x, y, z) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), frameMat);
+    m.position.set(x, y, z);
+    m.castShadow = true;
+    windowGroup.add(m);
+  };
+  bar(winW + F * 2, F, 0.14, 0, winTop + F / 2, backZ);
+  bar(winW + F * 2, F, 0.14, 0, winY - F / 2 + 0.01, backZ);
+  bar(F, winH + F * 2, 0.14, -winW / 2 - F / 2, winY + winH / 2, backZ);
+  bar(F, winH + F * 2, 0.14, winW / 2 + F / 2, winY + winH / 2, backZ);
+  bar(F * 1.3, winH, 0.12, 0, winY + winH / 2, backZ);
+  const MUNT = F * 0.5;
+  const gridRows = Math.max(2, Math.round(winH / 0.65));
+  for (const side of [-1, 1]) {
+    const cx = side * winW / 4;
+    bar(MUNT, winH, 0.09, cx, winY + winH / 2, backZ);
+    for (let r = 1; r < gridRows; r++) bar(winW / 2 - F, MUNT, 0.09, cx, winY + (winH / gridRows) * r, backZ);
+  }
+  glass = new THREE.Mesh(new THREE.PlaneGeometry(winW - 0.02, winH - 0.02), glassMat);
+  glass.renderOrder = 1;
+  glass.position.set(0, winY + winH / 2, backZ + 0.012);
+  windowGroup.add(glass);
+  const glow = new THREE.Mesh(
+    new THREE.PlaneGeometry(Math.max(9, winW * 3), Math.max(7, winH * 2.5)),
+    new THREE.MeshBasicMaterial({ map: glowTexture, toneMapped: false })
+  );
+  glow.position.set(0, winY + winH / 2, backZ - 1.3);
+  windowGroup.add(glow);
+  const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, winW * 1.5, 24), rodMat);
+  rod.rotation.z = Math.PI / 2;
+  rod.position.set(0, ROD_Y, backZ + 0.28);
+  rod.castShadow = true;
+  windowGroup.add(rod);
+  for (const x of [-winW * 0.75, winW * 0.75]) {
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.032, 16, 16), rodMat);
+    cap.position.set(x, ROD_Y, backZ + 0.28);
+    windowGroup.add(cap);
+  }
+  const p2f = (x, y, z) => { const t = y / -SUN_DIR.y; return [x + SUN_DIR.x * t, 0.001, z + SUN_DIR.z * t]; };
+  const tl = [-winW / 2, winTop, backZ + 0.02], tr = [winW / 2, winTop, backZ + 0.02];
+  const bl = [-winW / 2, winY, backZ + 0.02], br = [winW / 2, winY, backZ + 0.02];
+  const ftl = p2f(tl[0], tl[1], tl[2]), ftr = p2f(tr[0], tr[1], tr[2]);
+  const shaftGeo = new THREE.BufferGeometry();
+  const pts = [].concat(tl, tr, bl, br, ftl, ftr);
+  shaftGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pts), 3));
+  shaftGeo.setAttribute('aAlpha', new THREE.BufferAttribute(new Float32Array([0.9, 0.9, 0.55, 0.55, 0, 0]), 1));
+  shaftGeo.setIndex([0, 1, 5, 0, 5, 4, 2, 3, 5, 2, 5, 4]);
+  const shaft = new THREE.Mesh(shaftGeo, shaftMat);
+  windowGroup.add(shaft);
+  LATE.shaft = shaft;
+  areaLight.width = winW;
+  areaLight.height = winH;
+  areaLight.position.set(0, winY + winH / 2, backZ + 0.05);
+  areaLight.lookAt(0, winY + winH / 2, 10);
+  if (LATE.sun) LATE.sun.target.position.set(-winW * 0.2, winY + winH * 0.25, 2.2);
+  if (LATE.glowPlane) {
+    LATE.glowPlane.scale.set(winW - 0.04, winH - 0.04, 1);
+    LATE.glowPlane.position.set(0, winY + winH / 2, backZ - 0.02);
+  }
+  if (LATE.lightWorldPos) LATE.lightWorldPos.set(0, winY + winH / 2, backZ);
+}
+windowFromCm(120, 150);
+buildWindow();
 
 // ---------------------------------------------------------------------------
 // Luz: sol golden-hour desde afuera + spot de recorte + fill mínimo
@@ -191,6 +259,8 @@ sun.shadow.camera.left = -4; sun.shadow.camera.right = 4;
 sun.shadow.camera.top = 4; sun.shadow.camera.bottom = -4;
 sun.shadow.bias = -0.002;
 scene.add(sun, sun.target);
+LATE.sun = sun;
+buildWindow(); // re-apunta el sol y calza el glow de oclusión ahora que existen
 
 const keyFill = new THREE.SpotLight(0xfff0d8, 9, 18, 0.8, 0.7, 1.6);
 keyFill.position.set(-1.8, 2.4, 3.4);
@@ -202,56 +272,7 @@ const fill = new THREE.HemisphereLight(0xfdf3e3, 0x8a8378, FILL_BASE_INTENSITY);
 scene.add(fill);
 const fillFor = (sf) => FILL_BASE_INTENSITY * lerp(0.72, 1, sf);
 
-// ---------------------------------------------------------------------------
-// HAZ VOLUMÉTRICO: prisma aditivo desde el hueco de la ventana hasta el piso
-// siguiendo la dirección real del sol — la luz "se ve" entrar al ambiente.
-// ---------------------------------------------------------------------------
-const sunDir = new THREE.Vector3().subVectors(sun.target.position, sun.position).normalize();
-function projectToFloor(x, y, z) {
-  const t = y / -sunDir.y; // distancia hasta y=0
-  return [x + sunDir.x * t, 0.001, z + sunDir.z * t];
-}
-const shaftGeo = new THREE.BufferGeometry();
-{
-  const tl = [-WIN_W / 2, winTop, backZ + 0.02], tr = [WIN_W / 2, winTop, backZ + 0.02];
-  const bl = [-WIN_W / 2, WIN_Y, backZ + 0.02], br = [WIN_W / 2, WIN_Y, backZ + 0.02];
-  const ftl = projectToFloor(...tl), ftr = projectToFloor(...tr);
-  const positions = new Float32Array([
-    ...tl, ...tr, ...bl, ...br,     // 0-3: hueco de la ventana
-    ...ftl, ...ftr,                 // 4-5: proyección del borde superior en el piso
-  ]);
-  // caras: hueco -> piso (dos "cortinas" de luz: superior e inferior del haz)
-  const idx = [
-    0, 1, 5, 0, 5, 4,   // lámina superior del haz
-    2, 3, 5, 2, 5, 4,   // lámina inferior (converge al piso)
-  ];
-  // intensidad por vértice: fuerte en la ventana, se disuelve al llegar al piso
-  const alphas = new Float32Array([0.9, 0.9, 0.55, 0.55, 0.0, 0.0]);
-  shaftGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  shaftGeo.setAttribute('aAlpha', new THREE.BufferAttribute(alphas, 1));
-  shaftGeo.setIndex(idx);
-}
-const shaftMat = new THREE.ShaderMaterial({
-  transparent: true,
-  depthWrite: false,
-  blending: THREE.AdditiveBlending,
-  side: THREE.DoubleSide,
-  uniforms: {
-    uIntensity: { value: 0.16 },
-    uColor: { value: new THREE.Color(1.0, 0.78, 0.5) },
-  },
-  vertexShader: `
-    attribute float aAlpha;
-    varying float vAlpha;
-    void main(){ vAlpha = aAlpha; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-  fragmentShader: `
-    uniform float uIntensity;
-    uniform vec3 uColor;
-    varying float vAlpha;
-    void main(){ gl_FragColor = vec4(uColor, vAlpha * uIntensity); }`,
-});
-const shaft = new THREE.Mesh(shaftGeo, shaftMat);
-scene.add(shaft);
+// (el haz volumétrico se construye en buildWindow)
 
 // ---------------------------------------------------------------------------
 // Productos (corregidos por Agus): blackout BLANCO opaco; gasa y tusor dejan
@@ -260,10 +281,10 @@ scene.add(shaft);
 const PRODUCTS = [
   { name: 'Blackout', color: 'Blanco', tex: 'img/fabric/blackout.jpg', normal: 'img/fabric/blackout-nor.png',
     stiffness: 0.97, gravity: 7.4, friction: 0.962, influence: 0.34, dragCap: 0.028, roughness: 0.85,
-    opacity: 1, castShadow: true, tint: 0xffffff, sunFactor: 0.1, repeat: 1.6 },
+    opacity: 1, castShadow: true, tint: 0xf2f0eb, sunFactor: 0.1, repeat: 1.6, colorMap: false },
   { name: 'Gasa', color: 'Beige', tex: 'img/fabric/gasa.jpg', normal: 'img/fabric/gasa-nor.png',
     stiffness: 0.93, gravity: 6.2, friction: 0.968, influence: 0.42, dragCap: 0.04, roughness: 0.6,
-    opacity: 0.74, castShadow: false, tint: 0xfaf0dc, sunFactor: 0.72, repeat: 1.8 },
+    opacity: 0.82, castShadow: false, tint: 0xfaf0dc, sunFactor: 0.58, repeat: 1.8 },
   { name: 'Tusor', color: 'Natural', tex: 'img/fabric/tusor.jpg', normal: 'img/fabric/tusor-nor.png',
     stiffness: 0.95, gravity: 6.8, friction: 0.965, influence: 0.38, dragCap: 0.034, roughness: 0.8,
     opacity: 0.9, castShadow: false, tint: 0xe9dfc9, sunFactor: 0.35, repeat: 1.7 },
@@ -280,7 +301,7 @@ function fabricTex(src, srgb, rep, repY) {
 }
 function makeCurtainMaterial(p) {
   return new THREE.MeshStandardMaterial({
-    map: fabricTex(p.tex, true, p.repeat * 0.55, p.repeat),
+    map: p.colorMap === false ? null : fabricTex(p.tex, true, p.repeat * 0.55, p.repeat),
     normalMap: fabricTex(p.normal, false, p.repeat * 0.55, p.repeat),
     normalScale: new THREE.Vector2(0.5, 0.5),
     color: p.tint,
@@ -306,8 +327,8 @@ const ANCHO_MIN = 60, ANCHO_MAX = 300, ANCHO_DEF = 120;
 const ALTO_MIN = 60, ALTO_MAX = 260, ALTO_DEF = 150;
 let anchoCm = ANCHO_DEF, altoCm = ALTO_DEF;
 
-const FULL_W = WIN_W * 1.28;           // ancho total del par de paños
-let W_M = FULL_W, H_M = winTop + 0.16; // el ruedo besa el piso
+let FULL_W = winW * 1.34;              // ancho total del par de paños
+let W_M = FULL_W, H_M = ROD_Y + 0.015; // del barral al piso
 const PANEL_GAP = 0.18;                // apertura central en reposo (más juntos, pasa un haz)
 
 const PLEAT_COUNT = 7;                 // ondas por paño (wave fold denso)
@@ -457,12 +478,12 @@ const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 
 const glowPlane = new THREE.Mesh(
-  new THREE.PlaneGeometry(WIN_W - 0.04, WIN_H - 0.04),
+  new THREE.PlaneGeometry(1, 1),
   new THREE.MeshBasicMaterial({ color: 0xffe9c4 })
 );
-glowPlane.position.set(0, WIN_Y + WIN_H / 2, backZ - 0.02);
 glowPlane.layers.set(1);
 scene.add(glowPlane);
+LATE.glowPlane = glowPlane;
 
 const OCC_SIZE = isMobile ? 160 : 256;
 const occlusionTarget = new THREE.WebGLRenderTarget(OCC_SIZE, Math.round(OCC_SIZE * 1.5));
@@ -487,7 +508,7 @@ function renderOcclusionPass() {
   renderer.clearDepth();
   occSwap.clear();
   scene.traverse((o) => {
-    if (!o.isMesh || o === glowPlane || o === glass || o === shaft) return;
+    if (!o.isMesh || o === glowPlane || o === glass || o === LATE.shaft) return;
     occSwap.set(o, o.material);
     if (curtainMeshes.has(o)) { occCurtain.opacity = o.material.opacity; o.material = occCurtain; }
     else o.material = occOpaque;
@@ -551,9 +572,12 @@ composer.addPass(godrayPass);
 // blur atmosférico: bloom suave sobre las altas luces (la ventana, el charco)
 const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.45, 0.85, 0.8);
 composer.addPass(bloomPass);
+const smaaPass = new SMAAPass(1, 1); // mata el aliasing del barral en ángulo
+if (!isMobile) composer.addPass(smaaPass);
 composer.addPass(new OutputPass());
 
-const lightWorldPos = new THREE.Vector3(0, WIN_Y + WIN_H / 2, backZ);
+const lightWorldPos = new THREE.Vector3(0, winY + winH / 2, backZ);
+LATE.lightWorldPos = lightWorldPos;
 const lightProjected = new THREE.Vector3();
 function updateLightScreenPos() {
   lightProjected.copy(lightWorldPos).project(camera);
@@ -570,6 +594,7 @@ function applyLightMix() {
   // abierto — el haz respira con el producto (blackout casi lo apaga)
   shaftMat.uniforms.uIntensity.value = 0.02 + 0.09 * sf;
   bloomPass.strength = 0.2 + 0.5 * sf;
+  areaLight.intensity = 0.45 + 2.8 * sf; // envolvente suave sin lavar las telas translúcidas
 }
 
 // ---------------------------------------------------------------------------
@@ -714,7 +739,7 @@ function ensureMotionPermission() {
 let switching = false;
 let transitionState = null;
 const GATHER_SPREAD = 0.16;
-const OFF_DIST = WIN_W * 0.75 + 0.6;
+let OFF_DIST = winW * 0.75 + 0.6;
 const TRANSITION_SECS = 1.5;
 
 function goTo(next) {
@@ -779,9 +804,16 @@ nextBtn.addEventListener('click', () => goTo((currentIndex + 1) % PRODUCTS.lengt
 // Steppers + WhatsApp
 // ---------------------------------------------------------------------------
 function applySize() {
-  W_M = FULL_W * clamp(anchoCm / ANCHO_DEF, 0.5, 1.6);
-  H_M = (winTop - 0.02) * clamp(altoCm / ALTO_DEF, 0.45, 1.3);
+  // la VENTANA y la cortina se reconstruyen juntas con las medidas reales
+  windowFromCm(anchoCm, altoCm);
+  buildWindow();
+  FULL_W = winW * 1.34;
+  OFF_DIST = winW * 0.75 + 0.6;
+  W_M = FULL_W;
+  H_M = ROD_Y + 0.015;
   for (const sim of activeSet.sims) { sim.spread = 1; sim.offsetX = 0; sim.build(); }
+  if (idleSet.visible) for (const sim of idleSet.sims) sim.build();
+  updateCameraBase();
 }
 document.querySelectorAll('[data-step]').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -811,23 +843,38 @@ setTimeout(revealPanel, 2600);
 // ---------------------------------------------------------------------------
 // Cámara en ángulo + resize
 // ---------------------------------------------------------------------------
+const camBase = new THREE.Vector3();
+const camLook = new THREE.Vector3();
+function updateCameraBase() {
+  // dolly automático: la escena entra en cuadro para cualquier medida
+  const scale = Math.max(0.82, winW / 2.6, winTop / 2.94);
+  if (camera.aspect < 0.8) {
+    camera.fov = 54;
+    camBase.set(3.4 * scale, 1.75, 5.2 * scale);
+  } else {
+    camera.fov = 42;
+    camBase.set(3.1 * scale, 1.7, 3.9 * scale);
+  }
+  camLook.set(-0.45, winY + winH * 0.42, backZ);
+  camera.position.copy(camBase);
+  camera.lookAt(camLook);
+  camera.updateProjectionMatrix();
+}
 function resize() {
   const r = canvas.getBoundingClientRect();
   camera.aspect = r.width / r.height;
-  // vista en ángulo (~40°): la ventana en perspectiva, la luz cruza hacia la cámara
-  if (camera.aspect < 0.8) {
-    camera.fov = 54;
-    camera.position.set(3.4, 1.75, 5.2);
-  } else {
-    camera.fov = 42;
-    camera.position.set(3.1, 1.7, 3.9);
-  }
-  camera.lookAt(-0.45, 1.35, backZ);
-  camera.updateProjectionMatrix();
+  updateCameraBase();
   renderer.setSize(r.width, r.height, false);
   composer.setSize(r.width, r.height);
 }
 resize();
+
+// parallax sutil con el mouse (vida premium, no marea)
+let parTX = 0, parTY = 0, parX = 0, parY = 0;
+window.addEventListener('mousemove', (e) => {
+  parTX = (e.clientX / window.innerWidth) * 2 - 1;
+  parTY = (e.clientY / window.innerHeight) * 2 - 1;
+});
 applyLightMix();
 updateWhatsappLink();
 
@@ -855,6 +902,12 @@ function loop(now) {
   // audio: energía de movimiento del puntero (y del tilt)
   const motion = ptr.active ? Math.hypot(ptr.x - ptr.px, ptr.y - ptr.py) : Math.abs(tiltX) * 0.02;
   audioModulate(motion);
+
+  // parallax suave de cámara
+  parX += (parTX - parX) * 0.04;
+  parY += (parTY - parY) * 0.04;
+  camera.position.set(camBase.x + parX * 0.14, camBase.y - parY * 0.09, camBase.z);
+  camera.lookAt(camLook);
 
   updateLightScreenPos();
   renderOcclusionPass();

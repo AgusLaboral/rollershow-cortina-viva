@@ -106,7 +106,7 @@
   }
   .measure-panel.visible{ opacity:1; transform:translateY(0); pointer-events:auto; }
 
-  .stepper-row{ display:flex; gap:30px; }
+  .stepper-row{ display:flex; gap:16px; }
   .stepper{ display:flex; flex-direction:column; gap:8px; }
   .stepper .stepper-label{
     font-size:10.5px;
@@ -117,7 +117,7 @@
   .stepper .controls{
     display:flex;
     align-items:baseline;
-    gap:12px;
+    gap:0;
     border-bottom:1px solid rgba(51,46,39,.3);
     padding-bottom:7px;
   }
@@ -128,14 +128,16 @@
     font-size:19px;
     line-height:1;
     cursor:pointer;
-    padding:2px 2px;
+    width:44px;
+    height:44px;
+    padding:0;
     opacity:.75;
   }
   .stepper button:hover{ opacity:1; }
   .stepper .value{
     font-variant-numeric:tabular-nums;
     font-size:21px;
-    min-width:2.6ch;
+    min-width:2.2ch;
     text-align:center;
   }
   .stepper .unit{ font-size:11px; color:var(--muted); }
@@ -179,7 +181,7 @@
     top:5%;
     right:4%;
     z-index:5;
-    width:40px; height:40px;
+    width:44px; height:44px;
     display:flex; align-items:center; justify-content:center;
     background:none; border:none;
     color:var(--muted);

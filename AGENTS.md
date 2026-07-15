@@ -84,17 +84,24 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-15 (fin de sesión con Claude)
+## Estado al 2026-07-15 (ronda r32)
 
 Hecho: escena 3D completa con god-rays por oclusión real de la cortina, HDRI
 golden hour por la ventana, PBR en paredes/piso, cuarto cerrado, luz interior
 tenue fija (legibilidad del blackout), pliegues de pinza como reposo físico,
-carrusel con luz reactiva, steppers, CTA, encuadre responsive (retrato aleja
-y abre la cámara).
+carrusel con luz reactiva, steppers, CTA y encuadre responsive. Las medidas
+ahora reconstruyen juntas ventana, marco, barral, haz, cortina y cámara sin
+perder el foco del producto. RectAreaLight suma envolvente suave; SMAA queda
+solo en desktop y mobile limita pixel ratio a 1.5 + shadow map 512.
+
+QA r31/r32: Playwright recorrió Blackout, Gasa y Tusor, deformación, 120×150 y
+240×220 en mobile y desktop sin errores de página. Capturas en `_scratch/`.
+Los FPS headless (5 mobile / 2 desktop) son render por software y no representan
+GPU real; sirven únicamente como línea base comparativa.
 
 Pendiente / ideas anotadas:
-- Juicio visual final de Agus sobre la ronda r15 (screenshots en _scratch/).
-- Performance en móviles de gama baja: si hace falta, bajar shadow map a 512
-  en mobile, pixelRatio a 1.5, o desactivar god-rays bajo un umbral de FPS.
-- Deploy: pushear a main actualiza Pages solo (verificar live post-push).
+- Juicio visual final de Agus sobre la ronda r32 (screenshots en `_scratch/`).
+- Performance en un teléfono físico de gama media/baja; shadow map 512 y
+  pixelRatio 1.5 ya están aplicados. Si no alcanza, degradar god-rays por FPS.
+- Cada push a main actualiza Pages; verificar el live con captura post-push.
 - El copy del hint/label puede pasar por write-as-agus si Agus lo pide.
