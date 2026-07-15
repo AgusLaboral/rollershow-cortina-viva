@@ -41,20 +41,31 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 const easeInOut = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 const isMobile = matchMedia('(max-width:640px)').matches;
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const memoryKnown = typeof navigator.deviceMemory === 'number';
+const deviceMemory = navigator.deviceMemory || 4;
+const cpuCores = navigator.hardwareConcurrency || 4;
+const forcedQuality = new URLSearchParams(location.search).get('quality');
+const qualityTier = ['full', 'lite'].includes(forcedQuality)
+  ? forcedQuality
+  : ((memoryKnown && deviceMemory <= 4) || cpuCores <= 4 ? 'lite' : 'full');
+const QUALITY = qualityTier === 'full'
+  ? { dpr: isMobile ? 1.35 : 1.65, maxPixels: 3000000, shadow: 1024, occlusion: isMobile ? 192 : 288, rays: isMobile ? 36 : 52, smaa: !isMobile }
+  : { dpr: 1, maxPixels: 1400000, shadow: 512, occlusion: 144, rays: 24, smaa: false };
 
 // ---------------------------------------------------------------------------
 // Renderer / cámara
 // ---------------------------------------------------------------------------
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isMobile ? 1.5 : 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, QUALITY.dpr));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.18;
+renderer.toneMappingExposure = 1.12;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xc9c2b6);
+scene.background = new THREE.Color(0x090908);
 
 const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 80);
 
@@ -71,15 +82,17 @@ const backZ = -2.2;
 let winW = 2.6, winH = 2.72, winY = 0.02, winTop = 2.74, ROD_Y = 2.94;
 function windowFromCm(ancho, alto) {
   winW = 2.6 * clamp(ancho / 120, 0.65, 1.7);
-  winH = 2.72 * clamp(alto / 150, 0.55, 1.45);
-  winY = 0.02;
+  winH = 2.72 * clamp(alto / 150, 0.4, 1.6);
+  // Hasta 190 cm es una ventana convencional con antepecho. A partir de
+  // 200 cm hace el salto arquitectónico a puerta-ventana apoyada en el piso.
+  winY = alto >= 200 ? 0.02 : Math.max(0.34, 1.65 - winH / 2);
   winTop = winY + winH;
   ROD_Y = winTop + 0.2;
 }
 
 // Paredes y piso claros, sin textura cargada: superficie limpia que recibe luz
-const ROOM = { w: 30, h: 12 };
-const wallMat = new THREE.MeshStandardMaterial({ color: 0xcfc9bf, roughness: 0.95, metalness: 0 });
+const ROOM = { w: 80, h: 28 };
+const wallMat = new THREE.MeshStandardMaterial({ color: 0x11100f, roughness: 0.91, metalness: 0.01 });
 const backWall = new THREE.Mesh(new THREE.BufferGeometry(), wallMat);
 backWall.position.z = backZ;
 backWall.receiveShadow = true;
@@ -90,25 +103,21 @@ const ENV_ROT = 2.196; // sol del HDRI centrado en la ventana (calculado del arc
 new RGBELoader().load('img/env/sunset.hdr', (hdr) => {
   hdr.mapping = THREE.EquirectangularReflectionMapping;
   scene.environment = hdr;
-  scene.background = hdr;
-  scene.backgroundBlurriness = 0.5;
-  scene.backgroundIntensity = 1.15;
-  scene.environmentIntensity = 0.32;
-  scene.backgroundRotation = new THREE.Euler(0, ENV_ROT, 0);
+  scene.environmentIntensity = 0.22;
   scene.environmentRotation = new THREE.Euler(0, ENV_ROT, 0);
 });
 
 // Piso claro, satinado apenas: refleja suave la luz (sin ruido, sin puntitos)
 const floor = new THREE.Mesh(
-  new THREE.PlaneGeometry(80, 80),
-  new THREE.MeshStandardMaterial({ color: 0xbfb8ac, roughness: 0.55, metalness: 0.06 })
+  new THREE.PlaneGeometry(200, 200),
+  new THREE.MeshStandardMaterial({ color: 0x171512, roughness: 0.48, metalness: 0.08 })
 );
 floor.rotation.x = -Math.PI / 2;
 floor.position.set(0, 0, 10);
 floor.receiveShadow = true;
 scene.add(floor);
 
-const frameMat = new THREE.MeshStandardMaterial({ color: 0xf2efe8, roughness: 0.55, metalness: 0.05 });
+const frameMat = new THREE.MeshStandardMaterial({ color: 0x3a352f, roughness: 0.58, metalness: 0.05 });
 const glassMat = new THREE.MeshBasicMaterial({ color: 0xfff0cf, transparent: true, opacity: 0.16, depthWrite: false });
 const rodMat = new THREE.MeshStandardMaterial({ color: 0x57493c, roughness: 0.5, metalness: 0.45 });
 function makeGlowTexture() {
@@ -126,6 +135,7 @@ function makeGlowTexture() {
   return t;
 }
 const glowTexture = makeGlowTexture();
+const windowGlowMat = new THREE.MeshBasicMaterial({ map: glowTexture, toneMapped: false });
 
 // Haz volumétrico: material global; la geometría se reconstruye con la ventana
 const shaftMat = new THREE.ShaderMaterial({
@@ -135,20 +145,66 @@ const shaftMat = new THREE.ShaderMaterial({
   side: THREE.DoubleSide,
   uniforms: {
     uIntensity: { value: 0.16 },
-    uColor: { value: new THREE.Color(1.0, 0.78, 0.5) },
+    uColor: { value: new THREE.Color(1.0, 0.6, 0.28) },
+    uTime: { value: 0 },
   },
   vertexShader: [
-    'attribute float aAlpha;',
-    'varying float vAlpha;',
-    'void main(){ vAlpha = aAlpha; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    'attribute vec2 aBeamUv;',
+    'varying vec2 vBeamUv;',
+    'varying vec3 vWorld;',
+    'void main(){',
+    '  vBeamUv = aBeamUv;',
+    '  vWorld = (modelMatrix * vec4(position, 1.0)).xyz;',
+    '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
+    '}',
   ].join('\n'),
   fragmentShader: [
     'uniform float uIntensity;',
+    'uniform float uTime;',
     'uniform vec3 uColor;',
-    'varying float vAlpha;',
-    'void main(){ gl_FragColor = vec4(uColor, vAlpha * uIntensity); }',
+    'varying vec2 vBeamUv;',
+    'varying vec3 vWorld;',
+    'float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }',
+    'float noise(vec2 p){',
+    '  vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);',
+    '  return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);',
+    '}',
+    'float fbm(vec2 p){ float v=0.0; v+=noise(p)*.58; p=p*2.03+7.1; v+=noise(p)*.28; p=p*2.11+3.7; v+=noise(p)*.14; return v; }',
+    'void main(){',
+    '  float side = smoothstep(0.0,.13,vBeamUv.x) * smoothstep(0.0,.13,1.0-vBeamUv.x);',
+    '  float entryFade = smoothstep(0.0,.2,vBeamUv.y);',
+    '  float distanceFade = 1.0 - smoothstep(.68,1.0,vBeamUv.y);',
+    '  float drift = uTime * .055;',
+    '  float organic = fbm(vWorld.xz*.72 + vec2(drift,-drift*.63));',
+    '  float breath = .82 + .18*sin(uTime*.19 + vWorld.x*.72 + organic*2.4);',
+    '  float density = (.52 + organic*.48) * breath * side * entryFade * (.42 + distanceFade*.58);',
+    '  gl_FragColor = vec4(uColor, density * uIntensity);',
+    '}',
   ].join('\n'),
 });
+function makeHazeTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, 256, 256);
+  const blobs = [
+    [128, 128, 112, 1], [92, 120, 78, 0.46], [166, 104, 68, 0.36], [144, 164, 82, 0.32],
+  ];
+  for (const [x, y, r, alpha] of blobs) {
+    const grad = g.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, `rgba(255,255,255,${alpha})`);
+    grad.addColorStop(0.36, `rgba(255,255,255,${alpha * 0.48})`);
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 256, 256);
+  }
+  const texture = new THREE.CanvasTexture(c);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+const hazeTexture = makeHazeTexture();
+const hazeGroup = new THREE.Group();
+scene.add(hazeGroup);
 const SUN_DIR = new THREE.Vector3(-1.5, -1.5, 5.6).normalize(); // direccion fija del sol (afuera -> adentro)
 
 // RectAreaLight: LA luz físicamente correcta para una ventana — luz de área
@@ -204,39 +260,74 @@ function buildWindow() {
   windowGroup.add(glass);
   const glow = new THREE.Mesh(
     new THREE.PlaneGeometry(Math.max(9, winW * 3), Math.max(7, winH * 2.5)),
-    new THREE.MeshBasicMaterial({ map: glowTexture, toneMapped: false })
+    windowGlowMat
   );
   glow.position.set(0, winY + winH / 2, backZ - 1.3);
   windowGroup.add(glow);
-  const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, winW * 1.5, 24), rodMat);
+  // El barral queda completamente contenido detrás del ancho y del borde
+  // superior de la tela, incluso en la ondulación máxima.
+  const rodLength = winW * 1.24;
+  const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, rodLength, 24), rodMat);
   rod.rotation.z = Math.PI / 2;
-  rod.position.set(0, ROD_Y, backZ + 0.28);
+  rod.position.set(0, ROD_Y - 0.24, backZ + 0.18);
   rod.castShadow = true;
   windowGroup.add(rod);
-  for (const x of [-winW * 0.75, winW * 0.75]) {
+  for (const x of [-rodLength * 0.5, rodLength * 0.5]) {
     const cap = new THREE.Mesh(new THREE.SphereGeometry(0.032, 16, 16), rodMat);
-    cap.position.set(x, ROD_Y, backZ + 0.28);
+    cap.position.set(x, ROD_Y - 0.24, backZ + 0.18);
     windowGroup.add(cap);
   }
   const p2f = (x, y, z) => { const t = y / -SUN_DIR.y; return [x + SUN_DIR.x * t, 0.001, z + SUN_DIR.z * t]; };
-  const tl = [-winW / 2, winTop, backZ + 0.02], tr = [winW / 2, winTop, backZ + 0.02];
-  const bl = [-winW / 2, winY, backZ + 0.02], br = [winW / 2, winY, backZ + 0.02];
+  // El volumen excede apenas el vano: el feather ocurre detrás del marco y
+  // la luz visible cubre la ventana completa sin el rectángulo recortado.
+  const shaftHalfW = winW * 0.58;
+  const shaftBottom = Math.max(0.002, winY - winH * 0.035);
+  const tl = [-shaftHalfW, winTop + winH * 0.035, backZ + 0.02], tr = [shaftHalfW, winTop + winH * 0.035, backZ + 0.02];
+  const bl = [-shaftHalfW, shaftBottom, backZ + 0.02], br = [shaftHalfW, shaftBottom, backZ + 0.02];
   const ftl = p2f(tl[0], tl[1], tl[2]), ftr = p2f(tr[0], tr[1], tr[2]);
   const shaftGeo = new THREE.BufferGeometry();
   const pts = [].concat(tl, tr, bl, br, ftl, ftr);
   shaftGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pts), 3));
-  shaftGeo.setAttribute('aAlpha', new THREE.BufferAttribute(new Float32Array([0.9, 0.9, 0.55, 0.55, 0, 0]), 1));
+  shaftGeo.setAttribute('aBeamUv', new THREE.BufferAttribute(new Float32Array([
+    0, 0, 1, 0, 0, 0.12, 1, 0.12, 0, 1, 1, 1,
+  ]), 2));
   shaftGeo.setIndex([0, 1, 5, 0, 5, 4, 2, 3, 5, 2, 5, 4]);
   const shaft = new THREE.Mesh(shaftGeo, shaftMat);
   windowGroup.add(shaft);
   LATE.shaft = shaft;
+  for (const sprite of [...hazeGroup.children]) sprite.material.dispose();
+  hazeGroup.clear();
+  const hazeCount = qualityTier === 'full' ? 18 : 9;
+  const travelToFloor = (winY + winH * 0.55) / Math.max(0.001, -SUN_DIR.y);
+  for (let i = 0; i < hazeCount; i++) {
+    const p = (i + 0.35) / hazeCount;
+    const travel = travelToFloor * p;
+    const material = new THREE.SpriteMaterial({
+      map: hazeTexture,
+      color: 0xffb868,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+    });
+    const sprite = new THREE.Sprite(material);
+    const baseX = SUN_DIR.x * travel;
+    const baseY = winY + winH * 0.55 + SUN_DIR.y * travel;
+    const baseZ = backZ + 0.08 + SUN_DIR.z * travel;
+    sprite.position.set(baseX, baseY, baseZ);
+    sprite.scale.set(winW * (0.74 + p * 1.12), winH * (0.28 + p * 0.48), 1);
+    sprite.material.rotation = (i % 5) * 0.37;
+    sprite.userData = { baseX, baseY, phase: i * 1.73, p };
+    hazeGroup.add(sprite);
+  }
   areaLight.width = winW;
   areaLight.height = winH;
   areaLight.position.set(0, winY + winH / 2, backZ + 0.05);
   areaLight.lookAt(0, winY + winH / 2, 10);
   if (LATE.sun) LATE.sun.target.position.set(-winW * 0.2, winY + winH * 0.25, 2.2);
   if (LATE.glowPlane) {
-    LATE.glowPlane.scale.set(winW - 0.04, winH - 0.04, 1);
+    LATE.glowPlane.scale.set(winW + 0.08, winH + 0.08, 1);
     LATE.glowPlane.position.set(0, winY + winH / 2, backZ - 0.02);
   }
   if (LATE.lightWorldPos) LATE.lightWorldPos.set(0, winY + winH / 2, backZ);
@@ -252,7 +343,7 @@ const sun = new THREE.DirectionalLight(0xffc27d, SUN_BASE_INTENSITY);
 sun.position.set(1.0, 1.9, backZ - 3.4);
 sun.target.position.set(-0.5, 0.4, 2.2);
 sun.castShadow = true;
-sun.shadow.mapSize.set(isMobile ? 512 : 1024, isMobile ? 512 : 1024);
+sun.shadow.mapSize.set(QUALITY.shadow, QUALITY.shadow);
 sun.shadow.camera.near = 0.5;
 sun.shadow.camera.far = 16;
 sun.shadow.camera.left = -4; sun.shadow.camera.right = 4;
@@ -270,37 +361,41 @@ scene.add(keyFill, keyFill.target);
 const FILL_BASE_INTENSITY = 1.35;
 const fill = new THREE.HemisphereLight(0xfdf3e3, 0x8a8378, FILL_BASE_INTENSITY);
 scene.add(fill);
-const fillFor = (sf) => FILL_BASE_INTENSITY * lerp(0.72, 1, sf);
+const fillFor = (sf) => FILL_BASE_INTENSITY * lerp(0.52, 1, sf);
 
 // (el haz volumétrico se construye en buildWindow)
 
 // ---------------------------------------------------------------------------
-// Productos (corregidos por Agus): blackout BLANCO opaco; gasa y tusor dejan
-// pasar luz pero son más cubrientes que antes.
+// Transmisión física: 0 = la tela bloquea toda la luz; la abertura real entre
+// paños se calcula aparte usando la geometría viva.
 // ---------------------------------------------------------------------------
 const PRODUCTS = [
   { name: 'Blackout', color: 'Blanco', tex: 'img/fabric/blackout.jpg', normal: 'img/fabric/blackout-nor.png',
     stiffness: 0.97, gravity: 7.4, friction: 0.962, influence: 0.34, dragCap: 0.028, roughness: 0.85,
-    opacity: 1, castShadow: true, tint: 0xf2f0eb, sunFactor: 0.1, repeat: 1.6, colorMap: false },
+    opacity: 1, castShadow: true, shadowBlock: 1, tint: 0xf2f0eb, sunFactor: 0, repeat: 1.6, colorMap: false },
   { name: 'Gasa', color: 'Beige', tex: 'img/fabric/gasa.jpg', normal: 'img/fabric/gasa-nor.png',
     stiffness: 0.93, gravity: 6.2, friction: 0.968, influence: 0.42, dragCap: 0.04, roughness: 0.6,
-    opacity: 0.82, castShadow: false, tint: 0xfaf0dc, sunFactor: 0.58, repeat: 1.8 },
+    opacity: 0.995, castShadow: true, shadowBlock: 0.88, tint: 0xe3d1b5, sunFactor: 0.08, repeat: 1.8 },
   { name: 'Tusor', color: 'Natural', tex: 'img/fabric/tusor.jpg', normal: 'img/fabric/tusor-nor.png',
     stiffness: 0.95, gravity: 6.8, friction: 0.965, influence: 0.38, dragCap: 0.034, roughness: 0.8,
-    opacity: 0.9, castShadow: false, tint: 0xe9dfc9, sunFactor: 0.35, repeat: 1.7 },
+    opacity: 1, castShadow: true, shadowBlock: 0.96, tint: 0xc4b395, sunFactor: 0.02, repeat: 1.7 },
 ];
 
 const texLoader = new THREE.TextureLoader();
+const fabricTextureCache = new Map();
 function fabricTex(src, srgb, rep, repY) {
+  const key = `${src}|${srgb}|${rep}|${repY ?? rep}`;
+  if (fabricTextureCache.has(key)) return fabricTextureCache.get(key);
   const t = texLoader.load(src);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.repeat.set(rep, repY ?? rep);
-  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  t.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), qualityTier === 'full' ? 8 : 2);
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  fabricTextureCache.set(key, t);
   return t;
 }
 function makeCurtainMaterial(p) {
-  return new THREE.MeshStandardMaterial({
+  const material = new THREE.MeshStandardMaterial({
     map: p.colorMap === false ? null : fabricTex(p.tex, true, p.repeat * 0.55, p.repeat),
     normalMap: fabricTex(p.normal, false, p.repeat * 0.55, p.repeat),
     normalScale: new THREE.Vector2(0.5, 0.5),
@@ -311,6 +406,39 @@ function makeCurtainMaterial(p) {
     opacity: p.opacity,
     side: THREE.DoubleSide,
   });
+  return material;
+}
+
+// Sombra parcial estable: una máscara Bayer hace que PCF integre una sombra
+// proporcional sin convertir gasa/tusor en un bloque negro opaco.
+function makeShadowMaterial(p) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 8;
+  const g = c.getContext('2d');
+  const image = g.createImageData(8, 8);
+  const bayer = [
+    0,32,8,40,2,34,10,42, 48,16,56,24,50,18,58,26,
+    12,44,4,36,14,46,6,38, 60,28,52,20,62,30,54,22,
+    3,35,11,43,1,33,9,41, 51,19,59,27,49,17,57,25,
+    15,47,7,39,13,45,5,37, 63,31,55,23,61,29,53,21,
+  ];
+  const cutoff = Math.round(p.shadowBlock * 64);
+  for (let i = 0; i < 64; i++) {
+    const on = bayer[i] < cutoff ? 255 : 0;
+    image.data.set([on, on, on, 255], i * 4);
+  }
+  g.putImageData(image, 0, 0);
+  const alpha = new THREE.CanvasTexture(c);
+  alpha.wrapS = alpha.wrapT = THREE.RepeatWrapping;
+  alpha.repeat.set(32, 32);
+  alpha.magFilter = THREE.NearestFilter;
+  alpha.minFilter = THREE.NearestFilter;
+  return new THREE.MeshDepthMaterial({
+    depthPacking: THREE.RGBADepthPacking,
+    alphaMap: alpha,
+    alphaTest: 0.5,
+    side: THREE.DoubleSide,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -318,9 +446,9 @@ function makeCurtainMaterial(p) {
 // Cada paño cubre poco más de la mitad de la ventana y cuelga entreabierto:
 // la luz pasa por el medio. Ondulado marcado como estado de reposo.
 // ---------------------------------------------------------------------------
-const COLS = isMobile ? 9 : 11;   // por paño
-const ROWS = isMobile ? 20 : 26;
-const ITERATIONS = 4;
+const COLS = qualityTier === 'full' ? 11 : 8;   // por paño
+const ROWS = qualityTier === 'full' ? 26 : 18;
+const ITERATIONS = qualityTier === 'full' ? 4 : 3;
 const nx = COLS + 1;
 
 const ANCHO_MIN = 60, ANCHO_MAX = 300, ANCHO_DEF = 120;
@@ -328,7 +456,8 @@ const ALTO_MIN = 60, ALTO_MAX = 260, ALTO_DEF = 150;
 let anchoCm = ANCHO_DEF, altoCm = ALTO_DEF;
 
 let FULL_W = winW * 1.34;              // ancho total del par de paños
-let W_M = FULL_W, H_M = ROD_Y + 0.015; // del barral al piso
+let CURTAIN_BOTTOM = Math.max(0.015, winY - 0.06);
+let W_M = FULL_W, H_M = ROD_Y + 0.035 - CURTAIN_BOTTOM;
 const PANEL_GAP = 0.18;                // apertura central en reposo (más juntos, pasa un haz)
 
 const PLEAT_COUNT = 7;                 // ondas por paño (wave fold denso)
@@ -400,7 +529,7 @@ function createSim(side) {
           p.py = p.y - clamp(ptr.y - ptr.py, -params.dragCap, params.dragCap);
         }
       }
-      if (p.y < 0.015) { p.y = 0.015; p.py = p.y; }
+      if (p.y < CURTAIN_BOTTOM) { p.y = CURTAIN_BOTTOM; p.py = p.y; }
     }
     for (let it = 0; it < ITERATIONS; it++) {
       for (const c of sim.constraints) {
@@ -449,6 +578,7 @@ function createSet(product) {
   set.geos = [makePanelGeometry(), makePanelGeometry()];
   for (let i = 0; i < 2; i++) {
     const mesh = new THREE.Mesh(set.geos[i], makeCurtainMaterial(product));
+    mesh.customDepthMaterial = makeShadowMaterial(product);
     mesh.renderOrder = 3;
     mesh.position.z = backZ + 0.35;
     scene.add(mesh);
@@ -456,7 +586,13 @@ function createSet(product) {
   }
   set.setVisible = (v) => { set.visible = v; set.meshes.forEach((m) => { m.visible = v; }); };
   set.setCastShadow = (v) => set.meshes.forEach((m) => { m.castShadow = v; });
-  set.setMaterial = (product) => set.meshes.forEach((m) => { m.material.dispose(); m.material = makeCurtainMaterial(product); });
+  set.setMaterial = (product) => set.meshes.forEach((m) => {
+    m.material?.dispose();
+    m.customDepthMaterial?.alphaMap?.dispose();
+    m.customDepthMaterial?.dispose();
+    m.material = makeCurtainMaterial(product);
+    m.customDepthMaterial = makeShadowMaterial(product);
+  });
   set.opacity = () => set.meshes[0].material.opacity;
   return set;
 }
@@ -472,7 +608,7 @@ let activeSet = setA, idleSet = setB;
 let lightMix = { from: PRODUCTS[0], to: PRODUCTS[0], t: 1 };
 
 // ---------------------------------------------------------------------------
-// God-rays sutiles (la oclusión real de los paños modula el resplandor)
+// God-rays marcados: la oclusión real de los paños modula el resplandor.
 // ---------------------------------------------------------------------------
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
@@ -485,19 +621,23 @@ glowPlane.layers.set(1);
 scene.add(glowPlane);
 LATE.glowPlane = glowPlane;
 
-const OCC_SIZE = isMobile ? 160 : 256;
+const OCC_SIZE = QUALITY.occlusion;
 const occlusionTarget = new THREE.WebGLRenderTarget(OCC_SIZE, Math.round(OCC_SIZE * 1.5));
 const occOpaque = new THREE.MeshBasicMaterial({ color: 0x000000 });
-const occCurtain = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true });
 const occSwap = new Map();
 const curtainMeshes = new Set([...setA.meshes, ...setB.meshes]);
+const occCurtainMats = new Map([...curtainMeshes].map((mesh) => [
+  mesh, new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true }),
+]));
 
 function renderOcclusionPass() {
   const prevTarget = renderer.getRenderTarget();
   const prevBg = scene.background;
   const prevAutoClear = renderer.autoClear;
+  const prevShadows = renderer.shadowMap.enabled;
   scene.background = null;
   renderer.autoClear = false;
+  renderer.shadowMap.enabled = false;
   renderer.setRenderTarget(occlusionTarget);
   renderer.setClearColor(0x000000, 1);
   renderer.clear(true, true, true);
@@ -510,7 +650,11 @@ function renderOcclusionPass() {
   scene.traverse((o) => {
     if (!o.isMesh || o === glowPlane || o === glass || o === LATE.shaft) return;
     occSwap.set(o, o.material);
-    if (curtainMeshes.has(o)) { occCurtain.opacity = o.material.opacity; o.material = occCurtain; }
+    if (curtainMeshes.has(o)) {
+      const occMat = occCurtainMats.get(o);
+      occMat.opacity = o.material.opacity;
+      o.material = occMat;
+    }
     else o.material = occOpaque;
   });
   camera.layers.disableAll(); camera.layers.enable(0);
@@ -518,6 +662,7 @@ function renderOcclusionPass() {
   occSwap.forEach((mat, o) => { o.material = mat; });
 
   renderer.autoClear = prevAutoClear;
+  renderer.shadowMap.enabled = prevShadows;
   scene.background = prevBg;
   renderer.setRenderTarget(prevTarget);
 }
@@ -532,9 +677,10 @@ const GODRAY_FRAG = `
   uniform float density;
   uniform float weight;
   uniform float strength;
+  uniform float time;
   uniform vec3 tint;
   varying vec2 vUv;
-  const int NUM_SAMPLES = ${isMobile ? 28 : 48};
+  const int NUM_SAMPLES = ${QUALITY.rays};
   void main() {
     vec2 deltaTextCoord = (vUv - lightPos) * (density / float(NUM_SAMPLES));
     vec2 coord = vUv;
@@ -547,7 +693,8 @@ const GODRAY_FRAG = `
       currentDecay *= decay;
     }
     vec4 base = texture2D(tDiffuse, vUv);
-    vec3 col = base.rgb + tint * illumination * exposure * strength;
+    float haze = .84 + .16 * sin(vUv.x * 8.7 + time * .11 + sin(vUv.y * 6.1 - time * .07));
+    vec3 col = base.rgb + tint * illumination * exposure * strength * haze;
     float d = distance(vUv, vec2(0.5, 0.48));
     col *= smoothstep(1.05, 0.42, d) * 0.35 + 0.65;
     gl_FragColor = vec4(col, base.a);
@@ -558,22 +705,23 @@ const godrayPass = new ShaderPass({
     tDiffuse: { value: null },
     tOcclusion: { value: occlusionTarget.texture },
     lightPos: { value: new THREE.Vector2(0.5, 0.5) },
-    exposure: { value: 0.4 },
-    decay: { value: 0.968 },
-    density: { value: 0.95 },
-    weight: { value: 0.5 },
+    exposure: { value: 0.78 },
+    decay: { value: 0.975 },
+    density: { value: 1.08 },
+    weight: { value: 0.68 },
     strength: { value: 1.0 },
-    tint: { value: new THREE.Vector3(1.0, 0.8, 0.52) },
+    time: { value: 0 },
+    tint: { value: new THREE.Vector3(1.0, 0.68, 0.32) },
   },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
   fragmentShader: GODRAY_FRAG,
 });
 composer.addPass(godrayPass);
 // blur atmosférico: bloom suave sobre las altas luces (la ventana, el charco)
-const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.45, 0.85, 0.8);
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.72, 1.18, 0.48);
 composer.addPass(bloomPass);
 const smaaPass = new SMAAPass(1, 1); // mata el aliasing del barral en ángulo
-if (!isMobile) composer.addPass(smaaPass);
+if (QUALITY.smaa) composer.addPass(smaaPass);
 composer.addPass(new OutputPass());
 
 const lightWorldPos = new THREE.Vector3(0, winY + winH / 2, backZ);
@@ -586,15 +734,45 @@ function updateLightScreenPos() {
 
 function applyLightMix() {
   const t = lightMix.t;
-  const sf = lerp(lightMix.from.sunFactor, lightMix.to.sunFactor, t);
-  sun.intensity = SUN_BASE_INTENSITY * sf;
+  const transmission = lerp(lightMix.from.sunFactor, lightMix.to.sunFactor, t);
+  const openingFor = (set) => {
+    let gap = 0;
+    for (let y = 0; y <= ROWS; y++) {
+      const i = y * nx + COLS;
+      gap += Math.max(0, set.sims[1].points[i].x - set.sims[0].points[i].x);
+    }
+    return clamp((gap / (ROWS + 1)) / Math.max(W_M, 0.001), 0, 0.7);
+  };
+  const opening = transitionState
+    ? lerp(openingFor(activeSet), openingFor(idleSet), t)
+    : openingFor(activeSet);
+  const motionFor = (set) => {
+    let total = 0;
+    let count = 0;
+    for (const sim of set.sims) {
+      for (const p of sim.points) {
+        if (p.pinned) continue;
+        total += Math.hypot(p.x - p.px, p.y - p.py);
+        count++;
+      }
+    }
+    return clamp((total / Math.max(count, 1)) / Math.max(W_M * 0.0025, 0.001), 0, 1);
+  };
+  const motion = transitionState
+    ? lerp(motionFor(activeSet), motionFor(idleSet), t)
+    : motionFor(activeSet);
+  // La tela aporta transmisión; la separación física entre paños aporta luz
+  // directa. Blackout tiene transmisión cero: nunca pasa luz por su superficie.
+  const weaveShift = transmission > 0 ? motion * 0.24 : 0;
+  const sf = clamp(transmission + (1 - transmission) * opening * 1.15 + weaveShift, 0, 1);
+  sun.intensity = SUN_BASE_INTENSITY * sf * 0.58;
+  keyFill.intensity = 1.25 + 4.2 * sf;
   fill.intensity = fillFor(sf);
-  godrayPass.uniforms.strength.value = sf;
-  // el haz volumétrico: los paños tapan los costados pero el medio queda
-  // abierto — el haz respira con el producto (blackout casi lo apaga)
-  shaftMat.uniforms.uIntensity.value = 0.02 + 0.09 * sf;
-  bloomPass.strength = 0.2 + 0.5 * sf;
-  areaLight.intensity = 0.45 + 2.8 * sf; // envolvente suave sin lavar las telas translúcidas
+  godrayPass.uniforms.strength.value = 0.55 + 2.8 * sf;
+  shaftMat.uniforms.uIntensity.value = 0;
+  bloomPass.strength = 0.14 + 0.72 * sf;
+  areaLight.intensity = 0.06 + 1.65 * sf;
+  LATE.hazeStrength = sf;
 }
 
 // ---------------------------------------------------------------------------
@@ -750,7 +928,7 @@ function goTo(next) {
 
   idleSet.setMaterial(to);
   idleSet.setVisible(true);
-  idleSet.setCastShadow(false);
+  idleSet.setCastShadow(to.castShadow);
   for (const sim of idleSet.sims) {
     sim.spread = GATHER_SPREAD;
     sim.offsetX = sim.side * OFF_DIST;
@@ -810,7 +988,8 @@ function applySize() {
   FULL_W = winW * 1.34;
   OFF_DIST = winW * 0.75 + 0.6;
   W_M = FULL_W;
-  H_M = ROD_Y + 0.015;
+  CURTAIN_BOTTOM = Math.max(0.015, winY - 0.06);
+  H_M = ROD_Y + 0.035 - CURTAIN_BOTTOM;
   for (const sim of activeSet.sims) { sim.spread = 1; sim.offsetX = 0; sim.build(); }
   if (idleSet.visible) for (const sim of idleSet.sims) sim.build();
   updateCameraBase();
@@ -864,7 +1043,10 @@ function resize() {
   const r = canvas.getBoundingClientRect();
   camera.aspect = r.width / r.height;
   updateCameraBase();
+  const pixelCapDpr = Math.sqrt(QUALITY.maxPixels / Math.max(1, r.width * r.height));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, QUALITY.dpr, pixelCapDpr));
   renderer.setSize(r.width, r.height, false);
+  occlusionTarget.setSize(QUALITY.occlusion, Math.max(96, Math.round(QUALITY.occlusion / camera.aspect)));
   composer.setSize(r.width, r.height);
 }
 resize();
@@ -896,7 +1078,18 @@ function loop(now) {
   }
   for (let i = 0; i < 2; i++) uploadGeometry(activeSet.geos[i], activeSet.sims[i]);
   if (idleSet.visible) for (let i = 0; i < 2; i++) uploadGeometry(idleSet.geos[i], idleSet.sims[i]);
-  if (transitionState) applyLightMix();
+  applyLightMix();
+  const atmosphereTime = reducedMotion ? 0 : now * 0.001;
+  shaftMat.uniforms.uTime.value = atmosphereTime;
+  godrayPass.uniforms.time.value = atmosphereTime;
+  const hazeStrength = LATE.hazeStrength || 0;
+  for (const sprite of hazeGroup.children) {
+    const { baseX, baseY, phase, p } = sprite.userData;
+    sprite.position.x = baseX + Math.sin(atmosphereTime * 0.11 + phase) * (0.025 + p * 0.045);
+    sprite.position.y = baseY + Math.cos(atmosphereTime * 0.09 + phase * 0.7) * 0.025;
+    sprite.material.rotation += reducedMotion ? 0 : 0.00028 * (phase % 2 ? 1 : -1);
+    sprite.material.opacity = (0.008 + hazeStrength * 0.085) * (0.72 + 0.28 * Math.sin(atmosphereTime * 0.13 + phase));
+  }
   if (transitionDone) finishTransition();
 
   // audio: energía de movimiento del puntero (y del tilt)
@@ -918,12 +1111,48 @@ requestAnimationFrame(loop);
 
 window.__cortina = {
   getState: () => ({
-    currentIndex, anchoCm, altoCm, switching,
+    currentIndex, anchoCm, altoCm, switching, qualityTier, winW, winH, winY,
     productName: PRODUCTS[currentIndex].name, productColor: PRODUCTS[currentIndex].color,
+    panels: activeSet.meshes.map((m) => {
+      const a = m.geometry.getAttribute('position');
+      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      for (let i = 0; i < a.count; i++) {
+        minX = Math.min(minX, a.getX(i)); maxX = Math.max(maxX, a.getX(i));
+        minZ = Math.min(minZ, a.getZ(i)); maxZ = Math.max(maxZ, a.getZ(i));
+      }
+      return { visible: m.visible, opacity: m.material?.opacity ?? null, minX, maxX, minZ, maxZ };
+    }),
   }),
   pokeScreen: (clientX, clientY, dClientX, dClientY) => {
     const w1 = pointerToWorld(clientX - dClientX, clientY - dClientY);
     const w2 = pointerToWorld(clientX, clientY);
     if (w1 && w2) { ptr.active = true; ptr.px = w1.x; ptr.py = w1.y; ptr.x = w2.x; ptr.y = w2.y; }
+  },
+  jumpToProduct: (next) => {
+    if (next === currentIndex || next < 0 || next >= PRODUCTS.length) return;
+    const product = PRODUCTS[next];
+    activeSet.setMaterial(product);
+    activeSet.setCastShadow(product.castShadow);
+    for (const sim of activeSet.sims) {
+      sim.spread = 1;
+      sim.offsetX = 0;
+      sim.build();
+      sim.kinematic = null;
+    }
+    active = product;
+    currentIndex = next;
+    lightMix = { from: product, to: product, t: 1 };
+    productName.textContent = product.name;
+    productColor.textContent = product.color;
+    for (let i = 0; i < 2; i++) uploadGeometry(activeSet.geos[i], activeSet.sims[i]);
+    applyLightMix();
+  },
+  setSize: (ancho, alto) => {
+    anchoCm = clamp(ancho, ANCHO_MIN, ANCHO_MAX);
+    altoCm = clamp(alto, ALTO_MIN, ALTO_MAX);
+    anchoValue.textContent = anchoCm;
+    altoValue.textContent = altoCm;
+    applySize();
+    updateWhatsappLink();
   },
 };

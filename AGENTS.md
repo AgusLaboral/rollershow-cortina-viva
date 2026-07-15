@@ -24,13 +24,12 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
     sol del piso de verdad.
   - **God-rays reales** (radial blur clásico): pase de oclusión a render target
     chico donde TODO se pinta negro salvo un plano brillante en el hueco de la
-    ventana (layer 1, `glowPlane`); la cortina se pinta negro CON la opacidad
-    de su tela → la gasa deja pasar ~45% del haz, el blackout 0. El shader
+    ventana (layer 1, `glowPlane`); cada paño usa su propio material de oclusión
+    durante el crossfade. Blackout transmite 0; Gasa 8%; Tusor 2%. El shader
     (`GODRAY_FRAG`) acumula muestras radiales desde el centro de la ventana.
   - HDRI fotográfico `img/env/sunset.hdr` (Poly Haven venice_sunset 1k, CC0):
-    es lo que se VE por la ventana (scene.background con
-    `backgroundBlurriness=0.22` = el haze cálido pedido) y da la IBL suave
-    (`environmentIntensity` bajo; el sol real lo pone la DirectionalLight).
+    se usa sólo como IBL suave (`scene.environment`). El fondo visible es
+    carbón casi negro; no volver a asignar el HDR a `scene.background`.
     La rotación `ENV_ROT=2.196` se calculó analizando el archivo con
     `_scratch/find-sun.mjs` (sol del HDRI en u=0.60 → centrado en la ventana).
 - **Física de tela**: Verlet + constraints (portada del prototipo tearable de
@@ -44,6 +43,11 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
   fondo real 3D. La traslucidez por producto vive en `PRODUCTS[i].opacity`,
   y su efecto en la luz en `sunFactor` (multiplica sol/fill/god-rays) +
   la opacidad del oclusor en el pase de god-rays.
+- **Atmósfera**: la forma principal no es el viejo wedge geométrico. El haz
+  combina oclusión radial, bloom, RectAreaLight y 18/9 sprites de bruma suave
+  animados (full/lite). El plano con fBm queda sin intensidad para evitar las
+  diagonales rectas que Agus rechazó. No resolver con blur global: destruiría
+  pliegues y textura.
 - **Texturas**: tileables chicas que se repiten (pedido de Agus: livianas pero
   detalladas). Telas: `img/tela-*.png` (gpt-image-1 + mirror-tiling en
   `scripts/generate-assets.mjs`) + normal maps derivados
@@ -53,11 +57,13 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
   mobile (touchmove con preventDefault), acelerómetro (`deviceorientation`,
   permiso iOS pedido en el primer gesto táctil, sin botón dedicado). El
   puntero se proyecta al plano de la cortina por raycast (`pointerToWorld`).
-- **Carrusel**: 2 mallas (meshA/meshB) sobre la MISMA física; crossfade de
+- **Carrusel**: 2 sets de 2 paños (4 mallas) con física propia; crossfade de
   opacity + lerp de parámetros físicos y de luz (`sunFactor` → sol, fill,
-  god-rays) en ~560ms. Blackout Gris / Gasa Beige / Torsor Blanco.
+  god-rays) en ~560ms. Blackout Blanco / Gasa Beige / Tusor Natural.
 - **Medidas → WhatsApp**: steppers (60-300 x 60-260cm, paso 10) reconstruyen
-  la malla (`applySize()`); CTA `wa.me/5491140813223` con producto+medidas.
+  la malla (`applySize()`); debajo de 200 cm, ventana y cortina quedan elevadas
+  con antepecho; desde 200 cm pasan a puerta-ventana al piso. CTA
+  `wa.me/5491140813223` con producto+medidas.
   Aparecen tras la primera interacción (o 2.6s), nunca antes (regla de Agus:
   no pedir nada antes de la acción).
 
@@ -84,24 +90,28 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-15 (ronda r32)
+## Estado al 2026-07-15 (ronda r35)
 
-Hecho: escena 3D completa con god-rays por oclusión real de la cortina, HDRI
-golden hour por la ventana, PBR en paredes/piso, cuarto cerrado, luz interior
-tenue fija (legibilidad del blackout), pliegues de pinza como reposo físico,
-carrusel con luz reactiva, steppers, CTA y encuadre responsive. Las medidas
-ahora reconstruyen juntas ventana, marco, barral, haz, cortina y cámara sin
-perder el foco del producto. RectAreaLight suma envolvente suave; SMAA queda
-solo en desktop y mobile limita pixel ratio a 1.5 + shadow map 512.
+Hecho: ambiente negro, HDR sólo como IBL, fuente de ventana completa, bloom,
+god-rays y bruma orgánica animada. Blackout tiene transmisión cero; Gasa y
+Tusor son cubrientes y proyectan oclusión parcial. El barral queda detrás del
+ancho y del borde superior de la tela. La pared y el piso son de 80/200 unidades
+para que sus límites no entren en cámara. A 60-190 cm funciona como ventana
+elevada; a partir de 200 cm como puerta-ventana al piso.
 
-QA r31/r32: Playwright recorrió Blackout, Gasa y Tusor, deformación, 120×150 y
-240×220 en mobile y desktop sin errores de página. Capturas en `_scratch/`.
-Los FPS headless (5 mobile / 2 desktop) son render por software y no representan
-GPU real; sirven únicamente como línea base comparativa.
+Calidad adaptativa: `full` y `lite` mantienen escena, interacción, bloom y haze;
+sólo cambian DPR, límite de píxeles, shadow map, resolución/muestras del pase,
+topología de tela, anisotropía y cantidad de capas. Overrides QA:
+`?quality=full` / `?quality=lite`.
+
+QA r35: Playwright/Chrome recorrió carrusel real Blackout→Gasa, drag, steppers,
+WhatsApp y alturas 60/200 en mobile+desktop. Chrome acelerado por RTX 2060 Super
+midió 144 FPS en tier full. Headless por software dio 2/11 FPS y no se usa como
+medición absoluta. Capturas `r35-*` en `_scratch/`.
 
 Pendiente / ideas anotadas:
-- Juicio visual final de Agus sobre la ronda r32 (screenshots en `_scratch/`).
-- Performance en un teléfono físico de gama media/baja; shadow map 512 y
-  pixelRatio 1.5 ya están aplicados. Si no alcanza, degradar god-rays por FPS.
+- Juicio visual final de Agus sobre la ronda r35 (screenshots en `_scratch/`).
+- Performance en un teléfono físico de gama media/baja; el tier lite ya baja
+  resolución/muestras/capas sin cambiar el producto.
 - Cada push a main actualiza Pages; verificar el live con captura post-push.
 - El copy del hint/label puede pasar por write-as-agus si Agus lo pide.
