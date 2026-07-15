@@ -95,7 +95,7 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-15 (ronda r37)
+## Estado al 2026-07-15 (ronda r38)
 
 Hecho: ambiente negro con superficies reflectantes, HDR sólo como IBL, fuente
 de ventana completa, proyector cálido, bloom, god-rays y bruma orgánica.
@@ -108,12 +108,19 @@ media y clearcoat mínimo. No volver a un color gris uniforme para representar e
 piso ni validar una superficie como texturada si no usa mapas visibles. A 60-190
 cm funciona como ventana elevada; a partir de 200 cm como puerta-ventana al piso.
 
+Ocultamiento inteligente de límites: un zócalo 3D absorbe la junta pared-piso;
+las sombras usan `normalBias`, radio y frustum ajustados; mesa y cerámica tienen
+sombra de contacto; el shader final suma sólo halo localizado en el vano y una
+viñeta asimétrica suave. El bloom es selectivo y la bruma se concentra cerca de
+la fuente. No usar DOF, niebla global, grano, aberración ni blur del canvas para
+disimular defectos: también borrarían trama, pliegues y respuesta del producto.
+
 Calidad adaptativa: `full` y `lite` mantienen escena, interacción, bloom y haze;
 sólo cambian DPR, límite de píxeles, shadow map, resolución/muestras del pase,
 topología de tela, anisotropía y cantidad de capas. Overrides QA:
 `?quality=full` / `?quality=lite`.
 
-QA r37: Playwright/Chrome recorrió carrusel real Blackout→Gasa→Tusor, drag, steppers,
+QA r38: Playwright/Chrome recorrió carrusel real Blackout→Gasa→Tusor, drag, steppers,
 cotizador y alturas 60/200 en mobile+desktop. Chrome acelerado por RTX 2060 Super
 midió 144 FPS en tier full. Headless por software dio 2/11 FPS y no se usa como
 medición absoluta. Capturas `r35-*` en `_scratch/`.

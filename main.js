@@ -145,6 +145,17 @@ floor.position.set(0, 0, 10);
 floor.receiveShadow = true;
 scene.add(floor);
 
+// Un zocalo real absorbe la junta pared-piso. Es una mascara arquitectonica,
+// no un gradiente de pantalla: conserva la perspectiva y recibe la misma luz.
+const baseboard = new THREE.Mesh(
+  new THREE.BoxGeometry(ROOM.w, 0.1, 0.065),
+  new THREE.MeshStandardMaterial({ color: 0x35322e, roughness: 0.72, metalness: 0 })
+);
+baseboard.position.set(0, 0.05, backZ + 0.045);
+baseboard.castShadow = true;
+baseboard.receiveShadow = true;
+scene.add(baseboard);
+
 // Una mesa lateral y una pieza cerámica hacen visible el rebote de la ventana.
 // Son superficies de lectura lumínica, no decoración protagonista.
 const roomObjectMat = new THREE.MeshPhysicalMaterial({
@@ -157,9 +168,9 @@ const roomObjectMat = new THREE.MeshPhysicalMaterial({
 const tableTop = new THREE.Mesh(new THREE.CylinderGeometry(0.74, 0.78, 0.1, 48), roomObjectMat);
 const tableStem = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 0.44, 24), roomObjectMat);
 const tableBase = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.39, 0.07, 40), roomObjectMat);
-tableTop.position.set(-2.85, 0.49, 0.72);
-tableStem.position.set(-2.85, 0.24, 0.72);
-tableBase.position.set(-2.85, 0.035, 0.72);
+tableTop.position.set(-2.45, 0.49, 0.72);
+tableStem.position.set(-2.45, 0.24, 0.72);
+tableBase.position.set(-2.45, 0.035, 0.72);
 for (const part of [tableTop, tableStem, tableBase]) {
   part.castShadow = true;
   part.receiveShadow = true;
@@ -179,9 +190,34 @@ const ceramic = new THREE.Mesh(
     clearcoatRoughness: 0.16,
   })
 );
-ceramic.position.set(-2.75, 0.54, 0.7);
+ceramic.position.set(-2.38, 0.54, 0.7);
 ceramic.castShadow = true;
 scene.add(ceramic);
+
+// Sombra de contacto de baja frecuencia: ancla mesa y ceramica sin sumar un
+// pase SSAO ni ensuciar el piso con una mancha de bordes duros.
+function makeContactShadowTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(64, 64, 4, 64, 64, 62);
+  grad.addColorStop(0, 'rgba(0,0,0,0.72)');
+  grad.addColorStop(0.38, 'rgba(0,0,0,0.36)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+}
+const tableContactShadow = new THREE.Mesh(
+  new THREE.PlaneGeometry(1.8, 1.35),
+  new THREE.MeshBasicMaterial({
+    map: makeContactShadowTexture(), transparent: true, opacity: 0.22,
+    depthWrite: false, blending: THREE.NormalBlending,
+  })
+);
+tableContactShadow.rotation.x = -Math.PI / 2;
+tableContactShadow.position.set(-2.45, 0.004, 0.72);
+scene.add(tableContactShadow);
 
 const frameMat = new THREE.MeshPhysicalMaterial({
   color: 0xf4f2ec,
@@ -372,7 +408,9 @@ function buildWindow() {
   const hazeCount = qualityTier === 'full' ? 18 : 9;
   const travelToFloor = (winY + winH * 0.55) / Math.max(0.001, -SUN_DIR.y);
   for (let i = 0; i < hazeCount; i++) {
-    const p = (i + 0.35) / hazeCount;
+    // Mas densidad cerca de la fuente: oculta el borde del volumen sin llenar
+    // toda la habitacion con una niebla uniforme.
+    const p = Math.pow((i + 0.35) / hazeCount, 1.35);
     const travel = travelToFloor * p;
     const material = new THREE.SpriteMaterial({
       map: hazeTexture,
@@ -397,7 +435,15 @@ function buildWindow() {
   areaLight.height = winH;
   areaLight.position.set(0, winY + winH / 2, backZ + 0.05);
   areaLight.lookAt(0, winY + winH / 2, 10);
-  if (LATE.sun) LATE.sun.target.position.set(-winW * 0.2, winY + winH * 0.25, 2.2);
+  if (LATE.sun) {
+    LATE.sun.target.position.set(-winW * 0.2, winY + winH * 0.25, 2.2);
+    const shadowHalfW = Math.max(2.8, winW * 1.25);
+    LATE.sun.shadow.camera.left = -shadowHalfW;
+    LATE.sun.shadow.camera.right = shadowHalfW;
+    LATE.sun.shadow.camera.top = Math.max(3.6, winTop + 0.65);
+    LATE.sun.shadow.camera.bottom = -1;
+    LATE.sun.shadow.camera.updateProjectionMatrix();
+  }
   if (LATE.windowProjector) {
     LATE.windowProjector.position.set(0, winY + winH * 0.58, backZ + 0.08);
     LATE.windowProjector.target.position.set(-2.75, 0.24, 0.82);
@@ -425,7 +471,9 @@ sun.shadow.camera.near = 0.5;
 sun.shadow.camera.far = 16;
 sun.shadow.camera.left = -4; sun.shadow.camera.right = 4;
 sun.shadow.camera.top = 4; sun.shadow.camera.bottom = -4;
-sun.shadow.bias = -0.002;
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.018;
+sun.shadow.radius = qualityTier === 'full' ? 2 : 1;
 scene.add(sun, sun.target);
 LATE.sun = sun;
 
@@ -784,8 +832,13 @@ const GODRAY_FRAG = `
     vec4 base = texture2D(tDiffuse, vUv);
     float haze = .84 + .16 * sin(vUv.x * 8.7 + time * .11 + sin(vUv.y * 6.1 - time * .07));
     vec3 col = base.rgb + tint * illumination * exposure * strength * haze;
-    float d = distance(vUv, vec2(0.5, 0.48));
-    col *= smoothstep(1.05, 0.42, d) * 0.35 + 0.65;
+    // Halo solo alrededor del vano: suaviza la fuente sin lavar la tela.
+    float halo = pow(clamp(1.0 - distance(vUv, lightPos) / 0.48, 0.0, 1.0), 3.0);
+    col += tint * halo * (0.018 + 0.024 * strength);
+    // Vineta asimetrica: protege los extremos del set y deja el producto limpio.
+    vec2 lens = (vUv - vec2(0.52, 0.49)) * vec2(0.84, 1.08);
+    float vignette = 1.0 - 0.20 * smoothstep(0.43, 0.78, length(lens));
+    col *= vignette;
     gl_FragColor = vec4(col, base.a);
   }
 `;
@@ -807,7 +860,7 @@ const godrayPass = new ShaderPass({
 });
 composer.addPass(godrayPass);
 // blur atmosférico: bloom suave sobre las altas luces (la ventana, el charco)
-const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.72, 1.18, 0.48);
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.38, 0.62, 0.72);
 composer.addPass(bloomPass);
 const smaaPass = new SMAAPass(1, 1); // mata el aliasing del barral en ángulo
 if (QUALITY.smaa) composer.addPass(smaaPass);
@@ -879,7 +932,7 @@ function applyLightMix() {
   fill.intensity = fillFor(lightLevel);
   godrayPass.uniforms.strength.value = 0.38 + 2.1 * lightLevel;
   shaftMat.uniforms.uIntensity.value = 0;
-  bloomPass.strength = 0.18 + 0.76 * lightLevel;
+  bloomPass.strength = 0.12 + 0.52 * lightLevel;
   areaLight.intensity = 0.18 + 3.4 * lightLevel;
   windowProjector.intensity = 0.12 + 13 * lightLevel;
   LATE.hazeStrength = lightLevel;
@@ -1196,7 +1249,7 @@ function loop(now) {
     sprite.position.x = baseX + Math.sin(atmosphereTime * 0.11 + phase) * (0.025 + p * 0.045);
     sprite.position.y = baseY + Math.cos(atmosphereTime * 0.09 + phase * 0.7) * 0.025;
     sprite.material.rotation += reducedMotion ? 0 : 0.00028 * (phase % 2 ? 1 : -1);
-    sprite.material.opacity = (0.008 + hazeStrength * 0.085) * (0.72 + 0.28 * Math.sin(atmosphereTime * 0.13 + phase));
+    sprite.material.opacity = (0.008 + hazeStrength * 0.065) * (0.72 + 0.28 * Math.sin(atmosphereTime * 0.13 + phase));
   }
   if (transitionDone) finishTransition();
 
