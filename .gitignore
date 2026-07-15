@@ -1,0 +1,6 @@
+_scratch/
+node_modules/
+.env
+CLAUDE.local.md
+.claude/settings.local.json
+.DS_Store

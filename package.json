@@ -1,0 +1,12 @@
+{
+  "name": "rollershow-cortina-viva",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate-assets": "node scripts/generate-assets.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.61.1",
+    "sharp": "^0.33.5"
+  }
+}
