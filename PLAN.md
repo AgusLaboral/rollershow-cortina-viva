@@ -39,6 +39,20 @@
   luz interior fija (blackout ilegible); encuadre retrato (cámara más lejos
   y FOV más abierto bajo aspect 0.8).
 
+## v4 (2026-07-15, tarde) — escenario de oscuridad
+
+Pivote de dirección de arte decidido por Agus: **sin cuarto**. Oscuridad total,
+la ventana como único objeto 3D (marco aluminio + barral + vidrio) y única
+fuente de luz (HDRI golden hour blureado detrás + sol direccional + god-rays).
+Piso de estudio negro apenas reflectante. Look fotográfico: viñeta + grano en
+el shader final.
+
+Transición de carrusel: CINEMÁTICA (la física pura falló 3 veces: enredo,
+alfombra voladora, alas — regla del tercer parche → replanteo). La saliente se
+pliega hacia su borde y sale; la entrante llega plegada y se despliega, con
+lag por fila. La física libre (hover/gravedad/tilt) retoma al terminar.
+Física en sub-pasos fijos de 1/60s => idéntica a cualquier framerate.
+
 ## Pendiente inmediato
 
 1. Juicio visual de Agus sobre la ronda actual (screenshots `_scratch/r15-*`).
