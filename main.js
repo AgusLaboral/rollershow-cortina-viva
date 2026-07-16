@@ -859,7 +859,15 @@ function uploadGeometry(geo, sim) {
       const hemBlend = smoothstep(0.8, 1.0, p.v);
       const baseDepth = (product?.pleatDepth ?? 0.085) * lerp(1.0, 0.94, hemBlend);
       const dynamicDepth = compress * (product?.compressionDepth ?? 0.08) * lerp(1.0, 0.3, hemBlend);
-      const wave = Math.sin(p.u * Math.PI * 2 * PLEAT_COUNT) * (baseDepth + dynamicDepth);
+      // En una esquina cosida el orillo y el ruedo aplanan gradualmente el
+      // primer pliegue. Sin este taper, la primera columna interior conserva
+      // toda su profundidad Z junto a un borde plano y sobresale en perspectiva
+      // como una pestaña rectangular, aunque el borde físico esté recto.
+      const edgeDistance = Math.min(p.u, 1 - p.u);
+      const sewnCornerTaper = smoothstep(0, 0.14, edgeDistance);
+      const cornerDepth = lerp(1, sewnCornerTaper, hemBlend);
+      const wave = Math.sin(p.u * Math.PI * 2 * PLEAT_COUNT)
+        * (baseDepth + dynamicDepth) * cornerDepth;
       pos.setXYZ(i, p.x, p.y, wave);
       uv.setXY(i, p.u, 1 - p.v);
     }
@@ -1625,10 +1633,16 @@ window.__cortina = {
         outerEdgeMinX = Math.min(outerEdgeMinX, edgeX); outerEdgeMaxX = Math.max(outerEdgeMaxX, edgeX);
         outerEdgeCurveMax = Math.max(outerEdgeCurveMax, Math.abs(edgeX - lerp(edgeTopX, edgeBottomX, y / ROWS)));
       }
+      const hemStart = ROWS * nx;
+      const bottomCornerDepth = Math.max(
+        Math.abs(a.getZ(hemStart + 1)),
+        Math.abs(a.getZ(hemStart + COLS - 1)),
+      );
       return {
         visible: m.visible, opacity: m.material?.opacity ?? null,
         minX, maxX, minY, maxY, minZ, maxZ, hemMinY, hemMaxY,
-        outerEdgeMinX, outerEdgeMaxX, outerEdgeSpan: outerEdgeMaxX - outerEdgeMinX, outerEdgeCurveMax,
+        outerEdgeMinX, outerEdgeMaxX, outerEdgeSpan: outerEdgeMaxX - outerEdgeMinX,
+        outerEdgeCurveMax, bottomCornerDepth,
       };
     }),
   }),

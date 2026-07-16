@@ -93,7 +93,29 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-16 (ronda r48)
+## Estado al 2026-07-16 (ronda r49)
+
+Se elimino la pestana rectangular que podia aparecer en la union inferior entre
+orillo y ruedo. La causa no estaba en Verlet ni en la colision XY: despues de
+resolver la fisica, `uploadGeometry()` agregaba casi 9 cm de profundidad Z a la
+primera columna interior mientras el orillo quedaba en Z=0. La camara oblicua
+proyectaba esa cresta fuera de la silueta y las metricas anteriores, limitadas a
+X/Y del borde, no podian detectarla.
+
+El pliegue usa ahora un taper cosido: durante el ultimo 20% de altura, su
+profundidad se aplana gradualmente dentro del 14% lateral de cada extremo. No
+cambia el centro del pano, la fisica, los materiales, la transparencia ni la
+luz. El hook QA suma `bottomCornerDepth` para impedir que este defecto vuelva a
+quedar oculto por una medicion incompleta.
+
+QA r49: Playwright recorrio 18 combinaciones (lite/full, Blackout/Gasa/Tusor y
+150/200/260 cm), ambos panos, sin errores. En full la profundidad inferior de
+esquina quedo entre 0,8 y 1,1 cm; en lite, entre 2,4 y 3,2 cm por su topologia
+mas espaciada, sin sobresalir de la silueta. Se revisaron visualmente reposo,
+arrastre y las tres telas: la pestana desaparecio y los pliegues centrales se
+conservaron.
+
+### Estado r48 preservado
 
 La luz exterior gana presencia sin cambiar la logica causal de la escena: el
 sol fisico sube de 13,5 a 18, el haz ocluido aumenta de 0,16 a 0,27 y el bloom
