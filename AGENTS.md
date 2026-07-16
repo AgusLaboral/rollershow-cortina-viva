@@ -93,7 +93,36 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-16 (ronda r44)
+## Estado al 2026-07-16 (ronda r45)
+
+La calidad mobile se decide en dos etapas sin cambiar producto, materiales ni
+transparencia. Al inicio, `saveData`, memoria cuando el navegador la expone y
+nucleos seleccionan `full` o `lite`; un mobile capaz sin `deviceMemory` no se
+penaliza preventivamente y `?quality=full|lite` sigue disponible para QA. Luego
+de omitir la compilacion inicial de shaders, dos ventanas lentas consecutivas
+activan una unica degradacion: baja solamente el DPR interno y los buffers
+auxiliares. En `lite` el shadow map se actualiza cuadro por medio cuando la tela
+esta quieta, pero vuelve a cada cuadro durante arrastre, transicion o sensor.
+Una pestana oculta no simula ni renderiza. La captura frost conserva su
+resolucion aprobada para no degradar Gasa/Tusor.
+
+La orientacion mobile afecta levemente la fisica, no la camara ni la luz:
+inclinacion lateral aporta una fuerza amortiguada y la inclinacion perpendicular,
+calibrada contra la postura del primer evento, varia la gravedad como maximo
++/-12%. Los ejes se adaptan a portrait/landscape y se recalibran al rotar. iOS
+pide permiso solo desde el primer toque sobre el canvas; si el sensor no existe
+o el permiso se deniega, la experiencia queda intacta. El hook QA
+`window.__cortina.injectOrientation(beta, gamma)` verifica la respuesta fisica,
+pero permiso y sensor real siguen requiriendo una prueba en telefono.
+
+QA r45: Playwright en 393x852 con DPR 3, 2 GB informados y 4 nucleos eligio
+`lite`, activo la reduccion dinamica a 0,78 y recorrio Blackout->Gasa sin errores
+ni overflow. Un mobile simulado con seis nucleos y memoria no expuesta inicio en
+`full`; el override `?quality=full` mantuvo calidad completa. La inclinacion
+controlada produjo fuerza lateral y +9,5% de gravedad, dentro del limite, sin
+tocar radiancia ni frost.
+
+### Estado r44 preservado
 
 La transparencia de r43 quedó aprobada explícitamente por Agus como resultado
 definitivo y motor reusable. No recalibrar `frostMix`, LOD, microtrama,
@@ -220,7 +249,8 @@ en 0,02→0,64/255 mientras la franja iluminada se ensanchó.
 
 Pendiente / ideas anotadas:
 - Juicio visual final de Agus sobre la ronda r39 (screenshots en `_scratch/`).
-- Performance en un teléfono físico de gama media/baja; el tier lite ya baja
-  resolución/muestras/capas sin cambiar el producto.
+- Performance, permiso de orientación y sensación física en un teléfono real
+  de gama media/baja; selección automática, tier lite y degradación dinámica
+  ya están cubiertos por QA sintético.
 - Cada push a main actualiza Pages; verificar el live con captura post-push.
 - El copy del hint/label puede pasar por write-as-agus si Agus lo pide.

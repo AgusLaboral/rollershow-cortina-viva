@@ -48,13 +48,24 @@ const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const memoryKnown = typeof navigator.deviceMemory === 'number';
 const deviceMemory = navigator.deviceMemory || 4;
 const cpuCores = navigator.hardwareConcurrency || 4;
-const forcedQuality = new URLSearchParams(location.search).get('quality');
-const qualityTier = ['full', 'lite'].includes(forcedQuality)
+const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+const saveData = connection?.saveData === true;
+const highDensityMobile = isMobile && (window.devicePixelRatio || 1) >= 2.5;
+const requestedQuality = new URLSearchParams(location.search).get('quality');
+const forcedQuality = ['full', 'lite'].includes(requestedQuality) ? requestedQuality : null;
+// Safari no expone deviceMemory: no degradamos por ausencia de la señal; la
+// sonda runtime decide después si ese equipo realmente necesita alivio.
+const constrainedDevice = saveData
+  || (memoryKnown && deviceMemory <= 4)
+  || cpuCores <= 4;
+const qualityTier = forcedQuality
   ? forcedQuality
-  : ((memoryKnown && deviceMemory <= 4) || cpuCores <= 4 ? 'lite' : 'full');
+  : (constrainedDevice ? 'lite' : 'full');
 const QUALITY = qualityTier === 'full'
   ? { dpr: isMobile ? 1.35 : 1.65, maxPixels: 3000000, shadow: 2048, occlusion: isMobile ? 192 : 288, rays: isMobile ? 36 : 52, smaa: !isMobile }
   : { dpr: 1, maxPixels: 1400000, shadow: 1024, occlusion: 144, rays: 24, smaa: false };
+let adaptiveRenderScale = 1;
+let performanceMode = forcedQuality ? 'forced' : 'auto';
 document.body.classList.add(`quality-${qualityTier}`);
 
 // ---------------------------------------------------------------------------
@@ -64,6 +75,7 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, QUALITY.dpr));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.autoUpdate = qualityTier === 'full';
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.18;
@@ -744,7 +756,7 @@ function createSim(side) {
       }
     }
   };
-  sim.step = (dt, params, ptr, tiltX) => {
+  sim.step = (dt, params, ptr, tiltX, gravityTilt) => {
     if (sim.kinematic) {
       const k = sim.kinematic;
       const sy = H_M / ROWS;
@@ -768,7 +780,7 @@ function createSim(side) {
       const vy = clamp((p.y - p.py) * params.friction, -MAXV, MAXV);
       p.px = p.x; p.py = p.y;
       p.x += vx + tiltX * dt2;
-      p.y += vy - params.gravity * dt2;
+      p.y += vy - params.gravity * (1 + gravityTilt) * dt2;
       if (ptr && ptr.active) {
         const dx = p.x - ptr.x, dy = p.y - ptr.y;
         if (dx * dx + dy * dy < params.influence * params.influence) {
@@ -1204,8 +1216,10 @@ const curtainPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -(backZ + 0.3))
 const ndc = new THREE.Vector2();
 const hitPoint = new THREE.Vector3();
 const ptr = { active: false, x: 0, y: 0, px: 0, py: 0 };
-let tiltX = 0, motionEnabled = false;
-const TILT_STRENGTH = 1.6;
+let tiltX = 0, tiltGravity = 0, motionRequested = false, motionGranted = false;
+let motionBaselineLateral = null, motionBaselineGravity = null;
+const TILT_STRENGTH = 1.25;
+const TILT_GRAVITY_STRENGTH = 0.12;
 
 function exciteAtmosphere(x, y, deltaX) {
   interactionOpenEnergy = Math.max(interactionOpenEnergy, clamp(Math.abs(deltaX) * 14, 0, 1));
@@ -1219,9 +1233,9 @@ function pointerToWorld(clientX, clientY) {
   if (raycaster.ray.intersectPlane(curtainPlane, hitPoint)) return hitPoint;
   return null;
 }
-function firstGesture() { ensureMotionPermission(); initAudio(); revealPanel(); }
+function firstInteraction() { initAudio(); revealPanel(); }
 canvas.addEventListener('mouseenter', (e) => {
-  firstGesture();
+  firstInteraction();
   const w = pointerToWorld(e.clientX, e.clientY);
   if (w) { ptr.x = ptr.px = w.x; ptr.y = ptr.py = w.y; ptr.active = true; }
 });
@@ -1235,7 +1249,8 @@ canvas.addEventListener('mousemove', (e) => {
 });
 canvas.addEventListener('mouseleave', () => { ptr.active = false; });
 canvas.addEventListener('touchstart', (e) => {
-  firstGesture();
+  firstInteraction();
+  ensureMotionPermission();
   const t = e.touches[0], w = pointerToWorld(t.clientX, t.clientY);
   if (w) { ptr.x = ptr.px = w.x; ptr.y = ptr.py = w.y; ptr.active = true; }
 }, { passive: true });
@@ -1253,16 +1268,47 @@ canvas.addEventListener('touchcancel', endTouch);
 window.addEventListener('resize', resize);
 
 function onOrientation(e) {
-  if (e.gamma == null) return;
-  const target = clamp(Math.sin(e.gamma * Math.PI / 180), -1, 1) * TILT_STRENGTH;
-  tiltX += (target - tiltX) * 0.08;
+  const angle = screen.orientation?.angle ?? window.orientation ?? 0;
+  const landscape = Math.abs(angle) === 90;
+  const lateralAngle = landscape
+    ? (e.beta == null ? null : e.beta * (angle === 90 ? 1 : -1))
+    : (e.gamma == null ? null : e.gamma * (angle === 180 ? -1 : 1));
+  const gravityAngle = landscape
+    ? (e.gamma == null ? null : e.gamma * (angle === 90 ? -1 : 1))
+    : e.beta;
+  if (lateralAngle != null) {
+    if (motionBaselineLateral == null) motionBaselineLateral = lateralAngle;
+    const deltaLateral = ((lateralAngle - motionBaselineLateral + 540) % 360) - 180;
+    const targetX = clamp(deltaLateral / 22, -1, 1) * TILT_STRENGTH;
+    tiltX += (targetX - tiltX) * 0.08;
+  }
+  if (gravityAngle != null) {
+    if (motionBaselineGravity == null) motionBaselineGravity = gravityAngle;
+    const deltaGravity = ((gravityAngle - motionBaselineGravity + 540) % 360) - 180;
+    const targetGravity = clamp(deltaGravity / 28, -1, 1) * TILT_GRAVITY_STRENGTH;
+    tiltGravity += (targetGravity - tiltGravity) * 0.07;
+  }
 }
+function resetOrientationBaseline() {
+  motionBaselineLateral = null;
+  motionBaselineGravity = null;
+  tiltX = 0;
+  tiltGravity = 0;
+}
+screen.orientation?.addEventListener?.('change', resetOrientationBaseline);
+window.addEventListener('orientationchange', resetOrientationBaseline);
 function ensureMotionPermission() {
-  if (motionEnabled) return;
-  motionEnabled = true;
+  if (motionRequested || motionGranted) return;
+  motionRequested = true;
   if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-    DeviceOrientationEvent.requestPermission().then((s) => { if (s === 'granted') window.addEventListener('deviceorientation', onOrientation); }).catch(() => {});
+    DeviceOrientationEvent.requestPermission().then((s) => {
+      if (s === 'granted') {
+        motionGranted = true;
+        window.addEventListener('deviceorientation', onOrientation);
+      }
+    }).catch(() => { motionRequested = false; });
   } else if ('DeviceOrientationEvent' in window) {
+    motionGranted = true;
     window.addEventListener('deviceorientation', onOrientation);
   }
 }
@@ -1399,15 +1445,19 @@ function resize() {
   camera.aspect = r.width / r.height;
   updateCameraBase();
   const pixelCapDpr = Math.sqrt(QUALITY.maxPixels / Math.max(1, r.width * r.height));
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, QUALITY.dpr, pixelCapDpr));
+  const renderDpr = Math.min(window.devicePixelRatio || 1, QUALITY.dpr, pixelCapDpr) * adaptiveRenderScale;
+  renderer.setPixelRatio(renderDpr);
   renderer.setSize(r.width, r.height, false);
-  occlusionTarget.setSize(QUALITY.occlusion, Math.max(96, Math.round(QUALITY.occlusion / camera.aspect)));
-  clothMaskTarget.setSize(QUALITY.occlusion, Math.max(96, Math.round(QUALITY.occlusion / camera.aspect)));
+  const auxiliaryScale = Math.max(0.82, adaptiveRenderScale);
+  const occlusionW = Math.round(QUALITY.occlusion * auxiliaryScale);
+  occlusionTarget.setSize(occlusionW, Math.max(88, Math.round(occlusionW / camera.aspect)));
+  clothMaskTarget.setSize(occlusionW, Math.max(88, Math.round(occlusionW / camera.aspect)));
   const backdropW = qualityTier === 'full' ? 512 : 320;
   const backdropH = Math.max(180, Math.round(backdropW / camera.aspect));
   clothBackdropTarget.setSize(backdropW, backdropH);
   renderer.getDrawingBufferSize(clothViewport);
   clothTexel.set(1 / backdropW, 1 / backdropH);
+  composer.setPixelRatio(renderDpr);
   composer.setSize(r.width, r.height);
 }
 resize();
@@ -1427,9 +1477,38 @@ updateQuoteLink();
 const PHYS_DT = 1 / 60;
 const MAX_SUBSTEPS = 6;
 let last = performance.now();
+let probeFrames = 0, probeWindowFrames = 0, probeSeconds = 0, slowProbeWindows = 0;
+let performanceSettled = Boolean(forcedQuality);
+let shadowFrame = 0;
+function probePerformance(elapsed) {
+  if (performanceSettled || document.hidden || elapsed <= 0) return;
+  // Los primeros cuadros incluyen compilación de shaders y no representan
+  // rendimiento sostenido. Medimos luego una ventana corta y actuamos una vez.
+  if (probeFrames < 20) { probeFrames += 1; return; }
+  probeFrames += 1;
+  probeWindowFrames += 1;
+  probeSeconds += elapsed;
+  if (probeSeconds < 1.1 && probeWindowFrames < 72) return;
+  const averageFrame = probeSeconds / Math.max(1, probeWindowFrames);
+  if (averageFrame > 0.024) slowProbeWindows += 1;
+  if (slowProbeWindows >= 2) {
+    adaptiveRenderScale = qualityTier === 'full' ? 0.82 : 0.78;
+    performanceMode = 'adaptive';
+    resize();
+    performanceSettled = true;
+  } else if (averageFrame <= 0.024) {
+    performanceMode = 'stable';
+    performanceSettled = true;
+  } else {
+    probeWindowFrames = 0;
+    probeSeconds = 0;
+  }
+}
 function loop(now) {
   const elapsed = Math.min((now - last) / 1000, 0.16);
   last = now;
+  if (document.hidden) { requestAnimationFrame(loop); return; }
+  probePerformance(elapsed);
   interactionOpenEnergy += (0 - interactionOpenEnergy) * 0.035;
   const steps = Math.min(MAX_SUBSTEPS, Math.max(1, Math.round(elapsed / PHYS_DT)));
   let transitionDone = false;
@@ -1438,8 +1517,8 @@ function loop(now) {
     // El delta del puntero es un impulso, no una fuerza continua. Aplicarlo en
     // cada subpaso hacia que una sola entrada se acumulara hasta romper la tela.
     const impulse = s === 0 ? ptr : null;
-    for (const sim of activeSet.sims) sim.step(PHYS_DT, transitionState ? lightMix.from : active, impulse, tiltX);
-    if (idleSet.visible) for (const sim of idleSet.sims) sim.step(PHYS_DT, lightMix.to, null, tiltX);
+    for (const sim of activeSet.sims) sim.step(PHYS_DT, transitionState ? lightMix.from : active, impulse, tiltX, tiltGravity);
+    if (idleSet.visible) for (const sim of idleSet.sims) sim.step(PHYS_DT, lightMix.to, null, tiltX, tiltGravity);
   }
   if (ptr.active) { ptr.px = ptr.x; ptr.py = ptr.y; }
   for (let i = 0; i < 2; i++) uploadGeometry(activeSet.geos[i], activeSet.sims[i]);
@@ -1476,6 +1555,9 @@ function loop(now) {
   updateNavScreenPosition();
   renderClothBackdrop();
   renderOcclusionPass();
+  shadowFrame += 1;
+  const dynamicShadow = ptr.active || switching || Math.abs(tiltX) > 0.03 || Math.abs(tiltGravity) > 0.01;
+  if (!renderer.shadowMap.autoUpdate) renderer.shadowMap.needsUpdate = dynamicShadow || shadowFrame % 2 === 0;
   composer.render();
   requestAnimationFrame(loop);
 }
@@ -1483,7 +1565,14 @@ requestAnimationFrame(loop);
 
 window.__cortina = {
   getState: () => ({
-    currentIndex, anchoCm, altoCm, switching, qualityTier, winW, winH, winY,
+    currentIndex, anchoCm, altoCm, switching, qualityTier, performanceMode,
+    adaptiveRenderScale, renderDpr: renderer.getPixelRatio(),
+    qualitySignals: { memoryKnown, deviceMemory, cpuCores, saveData, highDensityMobile, constrainedDevice },
+    motion: {
+      requested: motionRequested, granted: motionGranted, tiltX, tiltGravity,
+      baselineLateral: motionBaselineLateral, baselineGravity: motionBaselineGravity,
+    },
+    winW, winH, winY,
     sourceEnergy: LATE.sourceEnergy || 0, hazeStrength: LATE.hazeStrength || 0, interactionOpenEnergy,
     opening: physicalOpening(activeSet),
     productName: PRODUCTS[currentIndex].name, productColor: PRODUCTS[currentIndex].color,
@@ -1505,6 +1594,7 @@ window.__cortina = {
       ptr.active = true; ptr.px = w1.x; ptr.py = w1.y; ptr.x = w2.x; ptr.y = w2.y;
     }
   },
+  injectOrientation: (beta, gamma) => onOrientation({ beta, gamma }),
   jumpToProduct: (next) => {
     if (next === currentIndex || next < 0 || next >= PRODUCTS.length) return;
     const product = PRODUCTS[next];
