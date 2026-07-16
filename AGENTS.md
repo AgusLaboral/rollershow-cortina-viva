@@ -93,7 +93,29 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-16 (ronda r42)
+## Estado al 2026-07-16 (ronda r43)
+
+La interfaz media deliberadamente entre el manual RollerShow y la escena
+experimental: navegación tipo "consola óptica" con hojas traslúcidas oscuras,
+tipografía Manrope, crema y hairlines de marca; medidas y CTA comparten una
+sola superficie ahumada y el Rojo Teja sigue siendo el único acento. En tier
+lite el panel desactiva `backdrop-filter` y usa un fondo opaco equivalente.
+
+Blackout no usa frost, emisión ni translucidez: limita también la contribución
+del postproceso mediante una máscara de tela independiente, recorta la respuesta
+de contracara y reduce la profundidad dinámica cerca del ruedo. Gasa y Tusor
+desenfocan la captura del fondo mediante mipmaps (cuatro muestras, no nueve),
+con difusión distinta por producto, oscurecimiento por longitud de recorrido,
+microtrama y variación macro de fibra. Conservan material opaco con profundidad
+y no usan `MeshPhysicalMaterial.transmission`.
+
+QA r43: Playwright recorrió 320, 375, 393 y 1440 px en tiers lite/full sin
+errores de consola ni overflow; verificó carrusel real, arrastre y steppers. El
+recorrido full capturó Blackout normal/arrastrado, Gasa y Tusor. El script largo
+agotó el timeout al reconstruir doce veces la malla bajo WebGL por software,
+pero el redimensionado ya quedó cubierto en la matriz corta full/lite.
+
+### Histórico r42 (reemplazado por r43)
 
 La interfaz usa el manual RollerShow v2.2 como fuente visual: wordmark oficial,
 Bricolage Grotesque para producto, Manrope para UI, Rojo Teja como única acción,

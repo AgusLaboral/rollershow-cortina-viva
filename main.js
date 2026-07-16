@@ -55,6 +55,7 @@ const qualityTier = ['full', 'lite'].includes(forcedQuality)
 const QUALITY = qualityTier === 'full'
   ? { dpr: isMobile ? 1.35 : 1.65, maxPixels: 3000000, shadow: 2048, occlusion: isMobile ? 192 : 288, rays: isMobile ? 36 : 52, smaa: !isMobile }
   : { dpr: 1, maxPixels: 1400000, shadow: 1024, occlusion: 144, rays: 24, smaa: false };
+document.body.classList.add(`quality-${qualityTier}`);
 
 // ---------------------------------------------------------------------------
 // Renderer / cámara
@@ -526,25 +527,26 @@ buildWindow();
 // ---------------------------------------------------------------------------
 const PRODUCTS = [
   { name: 'Blackout', color: 'Blanco', tex: 'img/fabric/blackout-albedo.jpg', normal: 'img/fabric/blackout-nor.png',
-    stiffness: 0.982, gravity: 8.35, friction: 0.955, influence: 0.5, dragCap: 0.052, dragResponse: 0.4, pleatDepth: 0.12, roughness: 0.9,
-    opacity: 1, frostMix: 0, frostRadius: 0, castShadow: true, shadowBlock: 1, tint: 0xffffff, sunFactor: 0, backlight: 0, radianceCap: 0.52, normalScale: 0.24, repeat: 1.6 },
+    stiffness: 0.982, gravity: 8.35, friction: 0.955, influence: 0.5, dragCap: 0.052, dragResponse: 0.4, pleatDepth: 0.095, compressionDepth: 0.04, roughness: 0.92,
+    opacity: 1, frostMix: 0, frostLod: 0, weaveStrength: 0, foldShade: 0.34, backfaceCap: 0.18, castShadow: true, shadowBlock: 1, tint: 0xffffff, sunFactor: 0, backlight: 0, radianceCap: 0.34, normalScale: 0.14, repeat: 1.6 },
   { name: 'Gasa', color: 'Beige', tex: 'img/fabric/gasa.jpg', normal: 'img/fabric/gasa-nor.png',
-    stiffness: 0.93, gravity: 6.2, friction: 0.968, influence: 0.58, dragCap: 0.07, dragResponse: 0.86, pleatDepth: 0.075, roughness: 0.84,
-    opacity: 1, frostMix: 0.44, frostRadius: 5, castShadow: true, shadowBlock: 0.2, tint: 0xfffbf5, sunFactor: 0.8, backlight: 0, radianceCap: 0.64, normalScale: 0.22, repeat: 2.05 },
+    stiffness: 0.93, gravity: 6.2, friction: 0.968, influence: 0.58, dragCap: 0.07, dragResponse: 0.86, pleatDepth: 0.075, compressionDepth: 0.08, roughness: 0.88,
+    opacity: 1, frostMix: 0.74, frostLod: 4.1, weaveStrength: 0.64, foldShade: 0.14, backfaceCap: 1, castShadow: true, shadowBlock: 0.18, tint: 0xfffbf5, sunFactor: 0.84, backlight: 0, radianceCap: 0.62, normalScale: 0.17, repeat: 2.35 },
   { name: 'Tusor', color: 'Natural', tex: 'img/fabric/tusor-albedo.jpg', normal: 'img/fabric/tusor-nor.png',
-    stiffness: 0.955, gravity: 6.9, friction: 0.963, influence: 0.54, dragCap: 0.06, dragResponse: 0.64, pleatDepth: 0.095, roughness: 0.9,
-    opacity: 1, frostMix: 0.2, frostRadius: 2.7, castShadow: true, shadowBlock: 0.54, tint: 0xfff8ed, sunFactor: 0.46, backlight: 0, radianceCap: 0.57, normalScale: 0.28, repeat: 1.85 },
+    stiffness: 0.955, gravity: 6.9, friction: 0.963, influence: 0.54, dragCap: 0.06, dragResponse: 0.64, pleatDepth: 0.09, compressionDepth: 0.065, roughness: 0.92,
+    opacity: 1, frostMix: 0.66, frostLod: 4, weaveStrength: 0.58, foldShade: 0.2, backfaceCap: 1, castShadow: true, shadowBlock: 0.38, tint: 0xfff8ed, sunFactor: 0.64, backlight: 0, radianceCap: 0.56, normalScale: 0.24, repeat: 2.05 },
 ];
 
 // Captura de baja resolución para transmisión difusa. Gasa y Tusor no son
 // vidrio alfa: conservan superficie, profundidad y trama, mientras el fondo se
 // percibe desenfocado a través de las fibras.
 const clothBackdropTarget = new THREE.WebGLRenderTarget(512, 288, {
-  minFilter: THREE.LinearFilter,
+  minFilter: THREE.LinearMipmapLinearFilter,
   magFilter: THREE.LinearFilter,
   depthBuffer: true,
 });
 clothBackdropTarget.texture.colorSpace = THREE.SRGBColorSpace;
+clothBackdropTarget.texture.generateMipmaps = true;
 const clothViewport = new THREE.Vector2(1, 1);
 const clothTexel = new THREE.Vector2(1 / 512, 1 / 288);
 
@@ -588,34 +590,55 @@ function makeCurtainMaterial(p) {
     shader.uniforms.uClothViewport = { value: clothViewport };
     shader.uniforms.uClothTexel = { value: clothTexel };
     shader.uniforms.uFrostMix = { value: p.frostMix };
-    shader.uniforms.uFrostRadius = { value: p.frostRadius };
+    shader.uniforms.uFrostLod = { value: p.frostLod };
+    shader.uniforms.uWeaveStrength = { value: p.weaveStrength };
+    shader.uniforms.uBackfaceCap = { value: p.backfaceCap };
+    shader.uniforms.uFoldShade = { value: p.foldShade };
     shader.fragmentShader = `uniform float uClothRadianceCap;
       uniform sampler2D uClothBackdrop;
       uniform vec2 uClothViewport;
       uniform vec2 uClothTexel;
       uniform float uFrostMix;
-      uniform float uFrostRadius;\n${shader.fragmentShader}`
+      uniform float uFrostLod;
+      uniform float uWeaveStrength;
+      uniform float uBackfaceCap;
+      uniform float uFoldShade;
+      float clothHash(vec2 p) {
+        p = fract(p * vec2(123.34, 456.21));
+        p += dot(p, p + 45.32);
+        return fract(p.x * p.y);
+      }
+      float clothNoise(vec2 p) {
+        vec2 i = floor(p), f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(clothHash(i), clothHash(i + vec2(1.0, 0.0)), f.x),
+                   mix(clothHash(i + vec2(0.0, 1.0)), clothHash(i + 1.0), f.x), f.y);
+      }\n${shader.fragmentShader}`
       .replace('#include <opaque_fragment>', `
         vec2 frostUv = gl_FragCoord.xy / uClothViewport;
-        vec2 frostStep = uClothTexel * uFrostRadius;
-        vec3 frost = texture2D(uClothBackdrop, frostUv).rgb * 0.24;
-        frost += texture2D(uClothBackdrop, frostUv + vec2(frostStep.x, 0.0)).rgb * 0.12;
-        frost += texture2D(uClothBackdrop, frostUv - vec2(frostStep.x, 0.0)).rgb * 0.12;
-        frost += texture2D(uClothBackdrop, frostUv + vec2(0.0, frostStep.y)).rgb * 0.12;
-        frost += texture2D(uClothBackdrop, frostUv - vec2(0.0, frostStep.y)).rgb * 0.12;
-        frost += texture2D(uClothBackdrop, frostUv + frostStep).rgb * 0.07;
-        frost += texture2D(uClothBackdrop, frostUv - frostStep).rgb * 0.07;
-        frost += texture2D(uClothBackdrop, frostUv + vec2(frostStep.x, -frostStep.y)).rgb * 0.07;
-        frost += texture2D(uClothBackdrop, frostUv + vec2(-frostStep.x, frostStep.y)).rgb * 0.07;
-        vec3 wovenFrost = frost * (0.9 + diffuseColor.rgb * 0.1);
+        vec2 frostStep = uClothTexel * exp2(max(0.0, uFrostLod - 1.0));
+        vec3 frost = texture2D(uClothBackdrop, frostUv + vec2(frostStep.x, frostStep.y), uFrostLod).rgb;
+        frost += texture2D(uClothBackdrop, frostUv + vec2(-frostStep.x, frostStep.y), uFrostLod).rgb;
+        frost += texture2D(uClothBackdrop, frostUv + vec2(frostStep.x, -frostStep.y), uFrostLod).rgb;
+        frost += texture2D(uClothBackdrop, frostUv - frostStep, uFrostLod).rgb;
+        frost *= 0.25;
+        float fiberLuma = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
+        float microWeave = clamp((fiberLuma - 0.48) * 3.2 + 0.5, 0.22, 1.12);
+        float macroSlub = mix(0.9, 1.08, clothNoise(vMapUv * vec2(7.0, 13.0)));
+        float fiberDensity = mix(1.0, microWeave * macroSlub, uWeaveStrength);
+        float pathLength = mix(0.58, 1.0, pow(abs(dot(normal, geometryViewDir)), 0.7));
+        vec3 wovenFrost = frost * (0.88 + diffuseColor.rgb * 0.12) * fiberDensity * pathLength;
         outgoingLight = mix(outgoingLight, wovenFrost, uFrostMix);
+        float foldFacing = pow(abs(dot(normal, geometryViewDir)), 0.65);
+        outgoingLight *= mix(1.0, mix(0.7, 1.0, foldFacing), uFoldShade);
+        if (!gl_FrontFacing) outgoingLight = min(outgoingLight, diffuseColor.rgb * uBackfaceCap);
         // Salvaguarda material: ningún pliegue textil puede convertirse en
         // fuente de bloom ni alcanzar el blanco exterior de la ventana.
         outgoingLight = min(outgoingLight, vec3(uClothRadianceCap));
         #include <opaque_fragment>
       `);
   };
-  material.customProgramCacheKey = () => `cloth-frost-${p.frostMix}-${p.frostRadius}-${p.radianceCap}`;
+  material.customProgramCacheKey = () => `cloth-frost-mip-${p.frostMix}-${p.frostLod}-${p.weaveStrength}-${p.foldShade}-${p.radianceCap}-${p.backfaceCap}`;
   return material;
 }
 
@@ -671,7 +694,7 @@ let CURTAIN_BOTTOM = Math.max(FLOOR_Y, winY - 0.06);
 let W_M = FULL_W, H_M = ROD_Y + 0.035 - CURTAIN_BOTTOM;
 const PANEL_GAP = 0.18;                // apertura central en reposo (más juntos, pasa un haz)
 
-const PLEAT_COUNT = 7;                 // ondas por paño (wave fold denso)
+const PLEAT_COUNT = qualityTier === 'full' ? 6 : 5;
 const PLEAT_AMPLITUDE = 0.55;
 const gatheredU = (u) => u + (PLEAT_AMPLITUDE / (PLEAT_COUNT * Math.PI * 2)) * Math.sin(u * PLEAT_COUNT * Math.PI * 2);
 
@@ -788,7 +811,11 @@ function uploadGeometry(geo, sim) {
         const rest = sim.restSpacingX[x - 1] + sim.restSpacingX[x];
         compress = clamp((rest - span) / rest, 0, 1);
       }
-      const wave = Math.sin(p.u * Math.PI * 2 * PLEAT_COUNT) * ((sim.product?.pleatDepth ?? 0.085) + compress * 0.12);
+      const product = sim.product;
+      const hemBlend = smoothstep(0.8, 1.0, p.v);
+      const baseDepth = (product?.pleatDepth ?? 0.085) * lerp(1.0, 0.94, hemBlend);
+      const dynamicDepth = compress * (product?.compressionDepth ?? 0.08) * lerp(1.0, 0.3, hemBlend);
+      const wave = Math.sin(p.u * Math.PI * 2 * PLEAT_COUNT) * (baseDepth + dynamicDepth);
       pos.setXYZ(i, p.x, p.y, wave);
       uv.setXY(i, p.u, 1 - p.v);
     }
@@ -807,6 +834,8 @@ function createSet(product) {
     mesh.customDepthMaterial = makeShadowMaterial(product);
     mesh.renderOrder = 3;
     mesh.position.z = backZ + 0.35;
+    mesh.receiveShadow = true;
+    mesh.layers.enable(2);
     scene.add(mesh);
     set.meshes.push(mesh);
   }
@@ -854,19 +883,28 @@ LATE.glowPlane = glowPlane;
 
 const OCC_SIZE = QUALITY.occlusion;
 const occlusionTarget = new THREE.WebGLRenderTarget(OCC_SIZE, Math.round(OCC_SIZE * 1.5));
+const clothMaskTarget = new THREE.WebGLRenderTarget(OCC_SIZE, Math.round(OCC_SIZE * 1.5), {
+  minFilter: THREE.LinearFilter,
+  magFilter: THREE.LinearFilter,
+  depthBuffer: true,
+});
 const occOpaque = new THREE.MeshBasicMaterial({ color: 0x000000 });
 const occSwap = new Map();
 const curtainMeshes = new Set([...setA.meshes, ...setB.meshes]);
 const occCurtainMats = new Map([...curtainMeshes].map((mesh) => [
   mesh, new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true }),
 ]));
+const clothMaskMats = new Map([...curtainMeshes].map((mesh) => [
+  mesh, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, toneMapped: false }),
+]));
 
 let backdropFrame = 0;
 function renderClothBackdrop() {
-  // Una captura cada dos frames basta: la baja frecuencia refuerza la difusión
-  // textil y evita duplicar innecesariamente el costo del render principal.
+  // La captura se renueva a baja cadencia: la difusión textil no necesita la
+  // frecuencia completa y el tier lite ahorra otro tercio de ese costo.
   backdropFrame += 1;
-  if (backdropFrame % 2 !== 0) return;
+  const cadence = qualityTier === 'full' ? 2 : 3;
+  if (backdropFrame % cadence !== 0) return;
   const visibility = new Map([...curtainMeshes].map((mesh) => [mesh, mesh.visible]));
   curtainMeshes.forEach((mesh) => { mesh.visible = false; });
   const prevTarget = renderer.getRenderTarget();
@@ -911,6 +949,23 @@ function renderOcclusionPass() {
   renderer.render(scene, camera);
   occSwap.forEach((mat, o) => { o.material = mat; });
 
+  // Máscara propia de tela: impide que el haze de pantalla vuelva a pintar
+  // brillo sobre Blackout después del cap del material. Gasa/Tusor conservan
+  // una fracción del volumen según su bloqueo óptico.
+  renderer.setRenderTarget(clothMaskTarget);
+  renderer.setClearColor(0x000000, 1);
+  renderer.clear(true, true, true);
+  for (const mesh of curtainMeshes) {
+    const original = mesh.material;
+    const mask = clothMaskMats.get(mesh);
+    mask.opacity = original.userData.shadowBlock ?? 1;
+    mesh.material = mask;
+  }
+  camera.layers.disableAll(); camera.layers.enable(2);
+  renderer.render(scene, camera);
+  for (const mesh of curtainMeshes) mesh.material = occSwap.get(mesh) ?? mesh.material;
+  camera.layers.disableAll(); camera.layers.enable(0);
+
   renderer.autoClear = prevAutoClear;
   renderer.shadowMap.enabled = prevShadows;
   scene.background = prevBg;
@@ -921,6 +976,7 @@ function renderOcclusionPass() {
 const GODRAY_FRAG = `
   uniform sampler2D tDiffuse;
   uniform sampler2D tOcclusion;
+  uniform sampler2D tClothMask;
   uniform vec2 lightPos;
   uniform vec2 beamEnd;
   uniform float exposure;
@@ -952,7 +1008,8 @@ const GODRAY_FRAG = `
     float beamCone = smoothstep(-0.02, 0.08, beamAlong)
       * (1.0 - smoothstep(0.1, 0.38, beamAcross / max(beamAlong, 0.08)))
       * (1.0 - smoothstep(0.78, 1.16, beamAlong));
-    vec3 col = base.rgb + tint * illumination * exposure * strength * haze * beamCone;
+    float clothMask = texture2D(tClothMask, vUv).r;
+    vec3 col = base.rgb + tint * illumination * exposure * strength * haze * beamCone * (1.0 - clothMask);
     // Vineta asimetrica: protege los extremos del set y deja el producto limpio.
     vec2 lens = (vUv - vec2(0.52, 0.49)) * vec2(0.84, 1.08);
     float vignette = 1.0 - 0.20 * smoothstep(0.43, 0.78, length(lens));
@@ -964,6 +1021,7 @@ const godrayPass = new ShaderPass({
   uniforms: {
     tDiffuse: { value: null },
     tOcclusion: { value: occlusionTarget.texture },
+    tClothMask: { value: clothMaskTarget.texture },
     lightPos: { value: new THREE.Vector2(0.5, 0.5) },
     beamEnd: { value: new THREE.Vector2(0.5, 0.1) },
     exposure: { value: 0.5 },
@@ -1337,6 +1395,7 @@ function resize() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, QUALITY.dpr, pixelCapDpr));
   renderer.setSize(r.width, r.height, false);
   occlusionTarget.setSize(QUALITY.occlusion, Math.max(96, Math.round(QUALITY.occlusion / camera.aspect)));
+  clothMaskTarget.setSize(QUALITY.occlusion, Math.max(96, Math.round(QUALITY.occlusion / camera.aspect)));
   const backdropW = qualityTier === 'full' ? 512 : 320;
   const backdropH = Math.max(180, Math.round(backdropW / camera.aspect));
   clothBackdropTarget.setSize(backdropW, backdropH);
