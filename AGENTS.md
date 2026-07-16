@@ -42,17 +42,16 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
   `transmission` (MeshPhysicalMaterial): tira el framerate al piso (render
   interno extra por objeto) y no aporta nada — la opacidad ya deja ver el
   fondo real 3D. La traslucidez por producto vive en `PRODUCTS[i].opacity`,
-  y su efecto en la luz en `sunFactor` (multiplica sol/fill/god-rays) +
-  la opacidad del oclusor en el pase de god-rays.
+  y su efecto atmosférico en `sunFactor`; la transmisión física de la sombra
+  vive en `shadowBlock` dentro del `customDepthMaterial`.
 - **Atmósfera**: la forma principal no es el viejo wedge geométrico. El haz
-  combina oclusión radial, bloom, RectAreaLight y 18/9 sprites de bruma suave
+  combina oclusión radial, bloom y 18/9 sprites de bruma suave
   animados (full/lite). El plano con fBm queda sin intensidad para evitar las
   diagonales rectas que Agus rechazó. No resolver con blur global: destruiría
   pliegues y textura.
-- **Receptores de luz**: fondo oscuro no implica materiales negros. Pared y
-  piso usan MeshPhysical claro/medio con clearcoat; un SpotLight nace en la
-  ventana y proyecta sobre piso, mesa lateral y cerámica. La mesa no es adorno:
-  hace visible el rebote especular. La carpintería argentina queda blanca.
+- **Receptor de luz**: el piso PBR es el receptor principal. Sólo el sol
+  exterior lo ilumina; pared perforada, marco y tela viva dibujan la huella en
+  el shadow map. Fuera del haz queda oscuro. La carpintería argentina es blanca.
 - **Texturas**: tileables chicas que se repiten (pedido de Agus: livianas pero
   detalladas). Telas: `img/tela-*.png` (gpt-image-1 + mirror-tiling en
   `scripts/generate-assets.mjs`) + normal maps derivados
@@ -95,10 +94,13 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-15 (ronda r38)
+## Estado al 2026-07-15 (ronda r39)
 
-Hecho: ambiente negro con superficies reflectantes, HDR sólo como IBL, fuente
-de ventana completa, proyector cálido, bloom, god-rays y bruma orgánica.
+Hecho: ambiente negro, HDR residual casi nulo y una sola luz expresiva: el sol
+exterior que atraviesa el hueco real de la ventana. Se eliminaron el proyector,
+el spot interior, la RectAreaLight y el HemisphereLight que iluminaban el piso
+sin respetar pared ni cortina. La pared bloquea sombras por ambas caras y el
+frustum cubre todo el piso visible; fuera del haz la madera permanece oscura.
 Blackout tiene transmisión cero, Tusor intermedia y Gasa alta; la oclusión usa
 `shadowBlock`, separada de la opacidad visual. El barral queda detrás del
 ancho y del borde superior de la tela. La pared y el piso son de 80/200 unidades
@@ -109,24 +111,32 @@ piso ni validar una superficie como texturada si no usa mapas visibles. A 60-190
 cm funciona como ventana elevada; a partir de 200 cm como puerta-ventana al piso.
 
 Ocultamiento inteligente de límites: un zócalo 3D absorbe la junta pared-piso;
-las sombras usan `normalBias`, radio y frustum ajustados; mesa y cerámica tienen
-sombra de contacto; el shader final suma sólo halo localizado en el vano y una
+las sombras usan `normalBias`, radio y frustum ajustados; el shader final suma
+sólo halo localizado en el vano y una
 viñeta asimétrica suave. El bloom es selectivo y la bruma se concentra cerca de
 la fuente. No usar DOF, niebla global, grano, aberración ni blur del canvas para
 disimular defectos: también borrarían trama, pliegues y respuesta del producto.
+La mesa y el jarrón procedurales se eliminaron: no agregar objetos reconocibles
+sin modelo curado y mapas PBR reales.
+
+Física r39: `CURTAIN_BOTTOM` sólo define el largo visual; la colisión ocurre
+contra `FLOOR_Y`, no contra un plano suspendido. Cada delta del puntero se
+consume una vez en el primer subpaso para que no se acumule como fuerza continua.
 
 Calidad adaptativa: `full` y `lite` mantienen escena, interacción, bloom y haze;
 sólo cambian DPR, límite de píxeles, shadow map, resolución/muestras del pase,
 topología de tela, anisotropía y cantidad de capas. Overrides QA:
 `?quality=full` / `?quality=lite`.
 
-QA r38: Playwright/Chrome recorrió carrusel real Blackout→Gasa→Tusor, drag, steppers,
+QA r39: Playwright/Chrome recorrió carrusel real Blackout→Gasa→Tusor, drag, steppers,
 cotizador y alturas 60/200 en mobile+desktop. Chrome acelerado por RTX 2060 Super
 midió 144 FPS en tier full. Headless por software dio 2/11 FPS y no se usa como
 medición absoluta. Capturas `r35-*` en `_scratch/`.
+Prueba causal Blackout: abertura 9,0%→12,9%; el ROI exterior al haz se mantuvo
+en 0,02→0,64/255 mientras la franja iluminada se ensanchó.
 
 Pendiente / ideas anotadas:
-- Juicio visual final de Agus sobre la ronda r36 (screenshots en `_scratch/`).
+- Juicio visual final de Agus sobre la ronda r39 (screenshots en `_scratch/`).
 - Performance en un teléfono físico de gama media/baja; el tier lite ya baja
   resolución/muestras/capas sin cambiar el producto.
 - Cada push a main actualiza Pages; verificar el live con captura post-push.

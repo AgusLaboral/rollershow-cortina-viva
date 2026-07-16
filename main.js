@@ -6,7 +6,6 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
-import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
 
 // ============================================================================
 // v5 — Dirección de Agus:
@@ -98,6 +97,8 @@ const wallMat = new THREE.MeshPhysicalMaterial({
   metalness: 0,
   clearcoat: 0.18,
   clearcoatRoughness: 0.36,
+  // El sol esta detras de la pared: DoubleSide tambien bloquea su shadow map.
+  side: THREE.DoubleSide,
 });
 const backWall = new THREE.Mesh(new THREE.BufferGeometry(), wallMat);
 backWall.position.z = backZ;
@@ -109,7 +110,7 @@ const ENV_ROT = 2.196; // sol del HDRI centrado en la ventana (calculado del arc
 new RGBELoader().load('img/env/sunset.hdr', (hdr) => {
   hdr.mapping = THREE.EquirectangularReflectionMapping;
   scene.environment = hdr;
-  scene.environmentIntensity = 0.22;
+  scene.environmentIntensity = 0.015;
   scene.environmentRotation = new THREE.Euler(0, ENV_ROT, 0);
 });
 
@@ -137,7 +138,7 @@ const floor = new THREE.Mesh(
     metalness: 0,
     clearcoat: 0.06,
     clearcoatRoughness: 0.62,
-    envMapIntensity: 0.8,
+    envMapIntensity: 0.06,
   })
 );
 floor.rotation.x = -Math.PI / 2;
@@ -155,69 +156,6 @@ baseboard.position.set(0, 0.05, backZ + 0.045);
 baseboard.castShadow = true;
 baseboard.receiveShadow = true;
 scene.add(baseboard);
-
-// Una mesa lateral y una pieza cerámica hacen visible el rebote de la ventana.
-// Son superficies de lectura lumínica, no decoración protagonista.
-const roomObjectMat = new THREE.MeshPhysicalMaterial({
-  color: 0x34302c,
-  roughness: 0.16,
-  metalness: 0.08,
-  clearcoat: 0.82,
-  clearcoatRoughness: 0.12,
-});
-const tableTop = new THREE.Mesh(new THREE.CylinderGeometry(0.74, 0.78, 0.1, 48), roomObjectMat);
-const tableStem = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 0.44, 24), roomObjectMat);
-const tableBase = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.39, 0.07, 40), roomObjectMat);
-tableTop.position.set(-2.45, 0.49, 0.72);
-tableStem.position.set(-2.45, 0.24, 0.72);
-tableBase.position.set(-2.45, 0.035, 0.72);
-for (const part of [tableTop, tableStem, tableBase]) {
-  part.castShadow = true;
-  part.receiveShadow = true;
-  scene.add(part);
-}
-const vaseProfile = [
-  [0.04, 0], [0.15, 0.025], [0.2, 0.11], [0.18, 0.31],
-  [0.12, 0.48], [0.09, 0.56], [0.1, 0.6],
-].map(([x, y]) => new THREE.Vector2(x, y));
-const ceramic = new THREE.Mesh(
-  new THREE.LatheGeometry(vaseProfile, qualityTier === 'full' ? 32 : 18),
-  new THREE.MeshPhysicalMaterial({
-    color: 0xb9a38d,
-    roughness: 0.2,
-    metalness: 0,
-    clearcoat: 0.72,
-    clearcoatRoughness: 0.16,
-  })
-);
-ceramic.position.set(-2.38, 0.54, 0.7);
-ceramic.castShadow = true;
-scene.add(ceramic);
-
-// Sombra de contacto de baja frecuencia: ancla mesa y ceramica sin sumar un
-// pase SSAO ni ensuciar el piso con una mancha de bordes duros.
-function makeContactShadowTexture() {
-  const c = document.createElement('canvas');
-  c.width = c.height = 128;
-  const g = c.getContext('2d');
-  const grad = g.createRadialGradient(64, 64, 4, 64, 64, 62);
-  grad.addColorStop(0, 'rgba(0,0,0,0.72)');
-  grad.addColorStop(0.38, 'rgba(0,0,0,0.36)');
-  grad.addColorStop(1, 'rgba(0,0,0,0)');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 128, 128);
-  return new THREE.CanvasTexture(c);
-}
-const tableContactShadow = new THREE.Mesh(
-  new THREE.PlaneGeometry(1.8, 1.35),
-  new THREE.MeshBasicMaterial({
-    map: makeContactShadowTexture(), transparent: true, opacity: 0.22,
-    depthWrite: false, blending: THREE.NormalBlending,
-  })
-);
-tableContactShadow.rotation.x = -Math.PI / 2;
-tableContactShadow.position.set(-2.45, 0.004, 0.72);
-scene.add(tableContactShadow);
 
 const frameMat = new THREE.MeshPhysicalMaterial({
   color: 0xf4f2ec,
@@ -313,13 +251,7 @@ function makeHazeTexture() {
 const hazeTexture = makeHazeTexture();
 const hazeGroup = new THREE.Group();
 scene.add(hazeGroup);
-const SUN_DIR = new THREE.Vector3(-1.5, -1.5, 5.6).normalize(); // direccion fija del sol (afuera -> adentro)
-
-// RectAreaLight: LA luz físicamente correcta para una ventana — luz de área
-// suave que envuelve la tela. (Tecnología que faltaba.)
-RectAreaLightUniformsLib.init();
-const areaLight = new THREE.RectAreaLight(0xffe3ba, 4, 1, 1);
-scene.add(areaLight);
+const SUN_DIR = new THREE.Vector3(-1.5, -1.85, 7.2).normalize(); // exterior -> piso interior
 
 const windowGroup = new THREE.Group();
 scene.add(windowGroup);
@@ -431,23 +363,16 @@ function buildWindow() {
     sprite.userData = { baseX, baseY, phase: i * 1.73, p };
     hazeGroup.add(sprite);
   }
-  areaLight.width = winW;
-  areaLight.height = winH;
-  areaLight.position.set(0, winY + winH / 2, backZ + 0.05);
-  areaLight.lookAt(0, winY + winH / 2, 10);
   if (LATE.sun) {
-    LATE.sun.target.position.set(-winW * 0.2, winY + winH * 0.25, 2.2);
-    const shadowHalfW = Math.max(2.8, winW * 1.25);
+    LATE.sun.target.position.set(-winW * 0.2, 0.05, 1.6);
+    // Todo el piso visible debe quedar dentro del shadow map. Fuera del
+    // frustum Three considera la superficie iluminada y aparecen placas falsas.
+    const shadowHalfW = Math.max(10, winW * 2);
     LATE.sun.shadow.camera.left = -shadowHalfW;
     LATE.sun.shadow.camera.right = shadowHalfW;
-    LATE.sun.shadow.camera.top = Math.max(3.6, winTop + 0.65);
-    LATE.sun.shadow.camera.bottom = -1;
+    LATE.sun.shadow.camera.top = Math.max(6, winTop + 1.4);
+    LATE.sun.shadow.camera.bottom = -4;
     LATE.sun.shadow.camera.updateProjectionMatrix();
-  }
-  if (LATE.windowProjector) {
-    LATE.windowProjector.position.set(0, winY + winH * 0.58, backZ + 0.08);
-    LATE.windowProjector.target.position.set(-2.75, 0.24, 0.82);
-    LATE.windowProjector.target.updateMatrixWorld();
   }
   if (LATE.glowPlane) {
     LATE.glowPlane.scale.set(winW + 0.08, winH + 0.08, 1);
@@ -461,14 +386,14 @@ buildWindow();
 // ---------------------------------------------------------------------------
 // Luz: sol golden-hour desde afuera + spot de recorte + fill mínimo
 // ---------------------------------------------------------------------------
-const SUN_BASE_INTENSITY = 9.0;
+const SUN_BASE_INTENSITY = 6.4;
 const sun = new THREE.DirectionalLight(0xffc27d, SUN_BASE_INTENSITY);
 sun.position.set(1.0, 1.9, backZ - 3.4);
-sun.target.position.set(-0.5, 0.4, 2.2);
+sun.target.position.set(-0.5, 0.05, 1.6);
 sun.castShadow = true;
 sun.shadow.mapSize.set(QUALITY.shadow, QUALITY.shadow);
 sun.shadow.camera.near = 0.5;
-sun.shadow.camera.far = 16;
+sun.shadow.camera.far = 30;
 sun.shadow.camera.left = -4; sun.shadow.camera.right = 4;
 sun.shadow.camera.top = 4; sun.shadow.camera.bottom = -4;
 sun.shadow.bias = -0.0004;
@@ -477,25 +402,11 @@ sun.shadow.radius = qualityTier === 'full' ? 2 : 1;
 scene.add(sun, sun.target);
 LATE.sun = sun;
 
-// Proyección desde el vano: convierte la ventana en una fuente que dibuja
-// reflejos sobre piso, banco y cerámica, como una pantalla luminosa real.
-const windowProjector = new THREE.SpotLight(0xffc27a, 0, 22, 0.72, 0.78, 1.35);
-windowProjector.position.set(0, winY + winH * 0.58, backZ + 0.08);
-windowProjector.target.position.set(-2.75, 0.24, 0.82);
-windowProjector.castShadow = false;
-scene.add(windowProjector, windowProjector.target);
-LATE.windowProjector = windowProjector;
-buildWindow(); // re-apunta sol, proyector y oclusión ahora que existen
-
-const keyFill = new THREE.SpotLight(0xfff0d8, 9, 18, 0.8, 0.7, 1.6);
-keyFill.position.set(-1.8, 2.4, 3.4);
-keyFill.target.position.set(0, 1.4, backZ + 0.3);
-scene.add(keyFill, keyFill.target);
-
-const FILL_BASE_INTENSITY = 1.2;
-const fill = new THREE.HemisphereLight(0xfdf3e3, 0x8a8378, FILL_BASE_INTENSITY);
-scene.add(fill);
-const fillFor = (sf) => FILL_BASE_INTENSITY * lerp(0.34, 1.18, sf);
+// Fill residual neutro: evita RGB negro, pero no cambia con la tela ni crea
+// una segunda direccion. El sol exterior queda como unica luz expresiva.
+const ambient = new THREE.AmbientLight(0xfff4e8, 0.025);
+scene.add(ambient);
+buildWindow();
 
 // (el haz volumétrico se construye en buildWindow)
 
@@ -506,13 +417,13 @@ const fillFor = (sf) => FILL_BASE_INTENSITY * lerp(0.34, 1.18, sf);
 const PRODUCTS = [
   { name: 'Blackout', color: 'Blanco', tex: 'img/fabric/blackout.jpg', normal: 'img/fabric/blackout-nor.png',
     stiffness: 0.97, gravity: 7.4, friction: 0.962, influence: 0.34, dragCap: 0.028, roughness: 0.85,
-    opacity: 1, castShadow: true, shadowBlock: 1, tint: 0xf2f0eb, sunFactor: 0, backlight: 0.01, repeat: 1.6, colorMap: false },
+    opacity: 1, castShadow: true, shadowBlock: 1, tint: 0xf2f0eb, sunFactor: 0, backlight: 0.08, repeat: 1.6, colorMap: false },
   { name: 'Gasa', color: 'Beige', tex: 'img/fabric/gasa.jpg', normal: 'img/fabric/gasa-nor.png',
     stiffness: 0.93, gravity: 6.2, friction: 0.968, influence: 0.42, dragCap: 0.04, roughness: 0.6,
     opacity: 0.94, castShadow: true, shadowBlock: 0.34, tint: 0xe8d7bc, sunFactor: 0.62, backlight: 0.16, repeat: 1.8 },
   { name: 'Tusor', color: 'Natural', tex: 'img/fabric/tusor.jpg', normal: 'img/fabric/tusor-nor.png',
     stiffness: 0.95, gravity: 6.8, friction: 0.965, influence: 0.38, dragCap: 0.034, roughness: 0.8,
-    opacity: 0.99, castShadow: true, shadowBlock: 0.78, tint: 0xcbbba4, sunFactor: 0.2, backlight: 0.07, repeat: 1.7 },
+    opacity: 0.99, castShadow: true, shadowBlock: 0.78, tint: 0xcbbba4, sunFactor: 0.2, backlight: 0.1, repeat: 1.7 },
 ];
 
 const texLoader = new THREE.TextureLoader();
@@ -593,7 +504,8 @@ const ALTO_MIN = 60, ALTO_MAX = 260, ALTO_DEF = 150;
 let anchoCm = ANCHO_DEF, altoCm = ALTO_DEF;
 
 let FULL_W = winW * 1.34;              // ancho total del par de paños
-let CURTAIN_BOTTOM = Math.max(0.015, winY - 0.06);
+const FLOOR_Y = 0.015;
+let CURTAIN_BOTTOM = Math.max(FLOOR_Y, winY - 0.06);
 let W_M = FULL_W, H_M = ROD_Y + 0.035 - CURTAIN_BOTTOM;
 const PANEL_GAP = 0.18;                // apertura central en reposo (más juntos, pasa un haz)
 
@@ -666,7 +578,6 @@ function createSim(side) {
           p.py = p.y - clamp(ptr.y - ptr.py, -params.dragCap, params.dragCap);
         }
       }
-      if (p.y < CURTAIN_BOTTOM) { p.y = CURTAIN_BOTTOM; p.py = p.y; }
     }
     for (let it = 0; it < ITERATIONS; it++) {
       for (const c of sim.constraints) {
@@ -678,6 +589,11 @@ function createSim(side) {
         if (!p1.pinned) { p1.x -= ox; p1.y -= oy; }
         if (!p2.pinned) { p2.x += ox; p2.y += oy; }
       }
+    }
+    // CURTAIN_BOTTOM define el largo visual, no una superficie de choque.
+    // La unica colision horizontal real es el piso.
+    for (const p of sim.points) {
+      if (p.y < FLOOR_Y) { p.y = FLOOR_Y; p.py = FLOOR_Y; }
     }
   };
   sim.build();
@@ -891,50 +807,33 @@ function updateNavScreenPosition() {
   place(nextBtn, navRightWorld);
 }
 
+function physicalOpening(set) {
+  let gap = 0;
+  for (let y = 0; y <= ROWS; y++) {
+    const i = y * nx + COLS;
+    gap += Math.max(0, set.sims[1].points[i].x - set.sims[0].points[i].x);
+  }
+  return clamp((gap / (ROWS + 1)) / Math.max(W_M, 0.001), 0, 0.7);
+}
+
 function applyLightMix() {
   const t = lightMix.t;
   const transmission = lerp(lightMix.from.sunFactor, lightMix.to.sunFactor, t);
-  const openingFor = (set) => {
-    let gap = 0;
-    for (let y = 0; y <= ROWS; y++) {
-      const i = y * nx + COLS;
-      gap += Math.max(0, set.sims[1].points[i].x - set.sims[0].points[i].x);
-    }
-    return clamp((gap / (ROWS + 1)) / Math.max(W_M, 0.001), 0, 0.7);
-  };
   const opening = transitionState
-    ? lerp(openingFor(activeSet), openingFor(idleSet), t)
-    : openingFor(activeSet);
-  const motionFor = (set) => {
-    let total = 0;
-    let count = 0;
-    for (const sim of set.sims) {
-      for (const p of sim.points) {
-        if (p.pinned) continue;
-        total += Math.hypot(p.x - p.px, p.y - p.py);
-        count++;
-      }
-    }
-    return clamp((total / Math.max(count, 1)) / Math.max(W_M * 0.0025, 0.001), 0, 1);
-  };
-  const motion = transitionState
-    ? lerp(motionFor(activeSet), motionFor(idleSet), t)
-    : motionFor(activeSet);
+    ? lerp(physicalOpening(activeSet), physicalOpening(idleSet), t)
+    : physicalOpening(activeSet);
   // La tela aporta transmisión; la separación física entre paños aporta luz
   // directa. Blackout tiene transmisión cero: nunca pasa luz por su superficie.
-  const weaveShift = transmission > 0 ? motion * 0.24 : 0;
-  const sf = clamp(transmission + (1 - transmission) * opening * 1.15 + weaveShift, 0, 1);
+  const sf = clamp(transmission + (1 - transmission) * opening * 1.15, 0, 1);
   // Compresión suave de altas luces: la Gasa sigue siendo muy luminosa sin
   // quemar marco, textura y superficies cuando el paño se abre por completo.
   const lightLevel = 1 - Math.exp(-sf * 1.45);
-  sun.intensity = SUN_BASE_INTENSITY * lightLevel * 0.72;
-  keyFill.intensity = 0.55 + 2.5 * lightLevel;
-  fill.intensity = fillFor(lightLevel);
-  godrayPass.uniforms.strength.value = 0.38 + 2.1 * lightLevel;
+  // La intensidad exterior es constante. La pared y la sombra de la tela
+  // determinan fisicamente donde llega el sol y cuanto crece la huella.
+  sun.intensity = SUN_BASE_INTENSITY;
+  godrayPass.uniforms.strength.value = 0.04 + 0.62 * lightLevel;
   shaftMat.uniforms.uIntensity.value = 0;
-  bloomPass.strength = 0.12 + 0.52 * lightLevel;
-  areaLight.intensity = 0.18 + 3.4 * lightLevel;
-  windowProjector.intensity = 0.12 + 13 * lightLevel;
+  bloomPass.strength = 0.04 + 0.2 * lightLevel;
   LATE.hazeStrength = lightLevel;
 }
 
@@ -1151,7 +1050,7 @@ function applySize() {
   FULL_W = winW * 1.34;
   OFF_DIST = winW * 0.75 + 0.6;
   W_M = FULL_W;
-  CURTAIN_BOTTOM = Math.max(0.015, winY - 0.06);
+  CURTAIN_BOTTOM = Math.max(FLOOR_Y, winY - 0.06);
   H_M = ROD_Y + 0.035 - CURTAIN_BOTTOM;
   for (const sim of activeSet.sims) { sim.spread = 1; sim.offsetX = 0; sim.build(); }
   if (idleSet.visible) for (const sim of idleSet.sims) sim.build();
@@ -1234,9 +1133,13 @@ function loop(now) {
   let transitionDone = false;
   for (let s = 0; s < steps; s++) {
     if (transitionState) transitionDone = stepTransition() || transitionDone;
-    for (const sim of activeSet.sims) sim.step(PHYS_DT, transitionState ? lightMix.from : active, ptr, tiltX);
+    // El delta del puntero es un impulso, no una fuerza continua. Aplicarlo en
+    // cada subpaso hacia que una sola entrada se acumulara hasta romper la tela.
+    const impulse = s === 0 ? ptr : null;
+    for (const sim of activeSet.sims) sim.step(PHYS_DT, transitionState ? lightMix.from : active, impulse, tiltX);
     if (idleSet.visible) for (const sim of idleSet.sims) sim.step(PHYS_DT, lightMix.to, null, tiltX);
   }
+  if (ptr.active) { ptr.px = ptr.x; ptr.py = ptr.y; }
   for (let i = 0; i < 2; i++) uploadGeometry(activeSet.geos[i], activeSet.sims[i]);
   if (idleSet.visible) for (let i = 0; i < 2; i++) uploadGeometry(idleSet.geos[i], idleSet.sims[i]);
   applyLightMix();
@@ -1274,6 +1177,7 @@ requestAnimationFrame(loop);
 window.__cortina = {
   getState: () => ({
     currentIndex, anchoCm, altoCm, switching, qualityTier, winW, winH, winY,
+    opening: physicalOpening(activeSet),
     productName: PRODUCTS[currentIndex].name, productColor: PRODUCTS[currentIndex].color,
     panels: activeSet.meshes.map((m) => {
       const a = m.geometry.getAttribute('position');
