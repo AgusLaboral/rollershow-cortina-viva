@@ -116,25 +116,6 @@ const wallMat = new THREE.MeshPhysicalMaterial({
   // El sol esta detras de la pared: DoubleSide tambien bloquea su shadow map.
   side: THREE.DoubleSide,
 });
-const wallBounceUniforms = {
-  level: { value: 0 },
-  center: { value: new THREE.Vector2(0, winY + winH * 0.5) },
-  size: { value: new THREE.Vector2(winW, winH) },
-};
-wallMat.onBeforeCompile = (shader) => {
-  shader.uniforms.uWallBounce = wallBounceUniforms.level;
-  shader.uniforms.uWindowCenter = wallBounceUniforms.center;
-  shader.uniforms.uWindowSize = wallBounceUniforms.size;
-  shader.vertexShader = `varying vec3 vBounceWorld;\n${shader.vertexShader}`
-    .replace('#include <begin_vertex>', '#include <begin_vertex>\nvBounceWorld = (modelMatrix * vec4(position, 1.0)).xyz;');
-  shader.fragmentShader = `varying vec3 vBounceWorld;\nuniform float uWallBounce;\nuniform vec2 uWindowCenter;\nuniform vec2 uWindowSize;\n${shader.fragmentShader}`
-    .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-      vec2 bounceDelta = (vBounceWorld.xy - uWindowCenter) / max(uWindowSize, vec2(0.1));
-      float localBounce = exp(-dot(bounceDelta * vec2(0.72, 0.9), bounceDelta * vec2(0.72, 0.9)) * 1.7);
-      totalEmissiveRadiance += diffuseColor.rgb * vec3(1.0, 0.82, 0.65) * localBounce * uWallBounce * 1.35;
-    `);
-};
-wallMat.customProgramCacheKey = () => 'localized-window-bounce-v1';
 const backWall = new THREE.Mesh(new THREE.BufferGeometry(), wallMat);
 backWall.position.z = backZ;
 backWall.receiveShadow = true;
@@ -149,15 +130,15 @@ new RGBELoader().load('img/env/sunset.hdr', (hdr) => {
   scene.environmentRotation = new THREE.Euler(0, ENV_ROT, 0);
 });
 
-// Porcelanato PBR blanco: micro-relieve/roughness de Porcelain001 (CC0) y
-// juntas arquitectónicas en world-space. Así la escala no depende del tamaño
-// del plano ni se convierte en un mosaico de piedra/barro al repetir el mapa.
-const floorColorMap = surfaceLoader.load('img/env/porcelain_diff.jpg');
-const floorNormalMap = surfaceLoader.load('img/env/porcelain_nor.jpg');
-const floorRoughnessMap = surfaceLoader.load('img/env/porcelain_rough.jpg');
+// Porcelanato marmolado claro: Marble005 CC0 aporta veta, normal y roughness;
+// las juntas arquitectónicas viven en world-space para conservar escala real.
+const floorColorMap = surfaceLoader.load('img/env/marble_diff.jpg');
+const floorNormalMap = surfaceLoader.load('img/env/marble_nor.jpg');
+const floorRoughnessMap = surfaceLoader.load('img/env/marble_rough.jpg');
 for (const texture of [floorColorMap, floorNormalMap, floorRoughnessMap]) {
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(48, 48);
+  // El mapa representa una placa grande, no un micropatrón repetido.
+  texture.repeat.set(120, 120);
   texture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), qualityTier === 'full' ? 8 : 2);
 }
 floorColorMap.colorSpace = THREE.SRGBColorSpace;
@@ -165,26 +146,28 @@ const floorMaterial = new THREE.MeshPhysicalMaterial({
     map: floorColorMap,
     normalMap: floorNormalMap,
     roughnessMap: floorRoughnessMap,
-    normalScale: new THREE.Vector2(0.11, 0.11),
-    color: 0xe6e8e9,
-    roughness: 0.56,
+    normalScale: new THREE.Vector2(0.3, 0.3),
+    color: 0xf1f0ed,
+    roughness: 0.43,
     metalness: 0,
-    clearcoat: 0.32,
-    clearcoatRoughness: 0.22,
-    envMapIntensity: 0.2,
+    clearcoat: 0.12,
+    clearcoatRoughness: 0.26,
+    envMapIntensity: 0.12,
   });
 floorMaterial.onBeforeCompile = (shader) => {
   shader.vertexShader = `varying vec3 vFloorWorld;\n${shader.vertexShader}`
     .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFloorWorld = (modelMatrix * vec4(position, 1.0)).xyz;');
   shader.fragmentShader = `varying vec3 vFloorWorld;\n${shader.fragmentShader}`
     .replace('#include <map_fragment>', `#include <map_fragment>
-      // Placas 120x80 cm, junta fina de 9 mm y antialias por derivadas.
+      // Placas 120x80 cm, junta real de 4 mm y antialias por derivadas.
       vec2 tileUv = vec2(vFloorWorld.x / 1.2, vFloorWorld.z / 0.8);
       vec2 edgeDistance = min(fract(tileUv), 1.0 - fract(tileUv));
       float nearestJoint = min(edgeDistance.x, edgeDistance.y);
       float jointAA = max(fwidth(nearestJoint) * 1.35, 0.0015);
-      float joint = 1.0 - smoothstep(0.009, 0.009 + jointAA, nearestJoint);
-      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.19, 0.205, 0.215), joint * 0.72);
+      float joint = 1.0 - smoothstep(0.004, 0.004 + jointAA, nearestJoint);
+      float plateVariation = fract(sin(dot(floor(tileUv), vec2(12.9898, 78.233))) * 43758.5453);
+      diffuseColor.rgb *= 0.965 + plateVariation * 0.055;
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.57, 0.55, 0.52), joint * 0.5);
     `);
 };
 const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), floorMaterial);
@@ -450,7 +433,9 @@ function buildWindow() {
   LATE.transmittedPool = transmittedPool;
   for (const sprite of [...hazeGroup.children]) sprite.material.dispose();
   hazeGroup.clear();
-  const hazeCount = qualityTier === 'full' ? 28 : 12;
+  // Las viejas capas aditivas pintaban una mancha ámbar a la izquierda sin
+  // respetar la ventana. El volumen ahora lo resuelve el pase de oclusión.
+  const hazeCount = 0;
   const travelToFloor = (winY + winH * 0.55) / Math.max(0.001, -SUN_DIR.y);
   for (let i = 0; i < hazeCount; i++) {
     // Mas densidad cerca de la fuente: oculta el borde del volumen sin llenar
@@ -502,8 +487,6 @@ function buildWindow() {
     LATE.glowPlane.position.set(0, winY + winH / 2, backZ - 0.02);
   }
   if (LATE.lightWorldPos) LATE.lightWorldPos.set(0, winY + winH / 2, backZ);
-  wallBounceUniforms.center.value.set(0, winY + winH * 0.5);
-  wallBounceUniforms.size.value.set(winW, winH);
 }
 windowFromCm(120, 150);
 buildWindow();
@@ -531,7 +514,7 @@ LATE.sun = sun;
 // una segunda direccion. El sol exterior queda como unica luz expresiva.
 // Relleno fijo, no reactivo: permite leer color y trama sin convertir la tela
 // en luz. La ventana sigue siendo la única fuente expresiva/direccional.
-const ambient = new THREE.AmbientLight(0xd7e2f2, 0.45);
+const ambient = new THREE.AmbientLight(0xd7e2f2, 0.2);
 scene.add(ambient);
 buildWindow();
 
@@ -543,15 +526,27 @@ buildWindow();
 // ---------------------------------------------------------------------------
 const PRODUCTS = [
   { name: 'Blackout', color: 'Blanco', tex: 'img/fabric/blackout-albedo.jpg', normal: 'img/fabric/blackout-nor.png',
-    stiffness: 0.97, gravity: 7.4, friction: 0.962, influence: 0.5, dragCap: 0.052, roughness: 0.88,
-    opacity: 1, castShadow: true, shadowBlock: 1, tint: 0xffffff, sunFactor: 0, backlight: 0, radianceCap: 0.52, normalScale: 0.2, repeat: 1.6 },
+    stiffness: 0.982, gravity: 8.35, friction: 0.955, influence: 0.5, dragCap: 0.052, dragResponse: 0.4, pleatDepth: 0.12, roughness: 0.9,
+    opacity: 1, frostMix: 0, frostRadius: 0, castShadow: true, shadowBlock: 1, tint: 0xffffff, sunFactor: 0, backlight: 0, radianceCap: 0.52, normalScale: 0.24, repeat: 1.6 },
   { name: 'Gasa', color: 'Beige', tex: 'img/fabric/gasa.jpg', normal: 'img/fabric/gasa-nor.png',
-    stiffness: 0.93, gravity: 6.2, friction: 0.968, influence: 0.58, dragCap: 0.07, roughness: 0.72,
-    opacity: 0.72, castShadow: true, shadowBlock: 0.14, tint: 0xfffbf5, sunFactor: 0.84, backlight: 0, radianceCap: 0.7, normalScale: 0.12, repeat: 1.8 },
+    stiffness: 0.93, gravity: 6.2, friction: 0.968, influence: 0.58, dragCap: 0.07, dragResponse: 0.86, pleatDepth: 0.075, roughness: 0.84,
+    opacity: 1, frostMix: 0.44, frostRadius: 5, castShadow: true, shadowBlock: 0.2, tint: 0xfffbf5, sunFactor: 0.8, backlight: 0, radianceCap: 0.64, normalScale: 0.22, repeat: 2.05 },
   { name: 'Tusor', color: 'Natural', tex: 'img/fabric/tusor-albedo.jpg', normal: 'img/fabric/tusor-nor.png',
-    stiffness: 0.95, gravity: 6.8, friction: 0.965, influence: 0.54, dragCap: 0.06, roughness: 0.88,
-    opacity: 1, castShadow: true, shadowBlock: 0.72, tint: 0xfff8ed, sunFactor: 0.24, backlight: 0, radianceCap: 0.58, normalScale: 0.2, repeat: 1.7 },
+    stiffness: 0.955, gravity: 6.9, friction: 0.963, influence: 0.54, dragCap: 0.06, dragResponse: 0.64, pleatDepth: 0.095, roughness: 0.9,
+    opacity: 1, frostMix: 0.2, frostRadius: 2.7, castShadow: true, shadowBlock: 0.54, tint: 0xfff8ed, sunFactor: 0.46, backlight: 0, radianceCap: 0.57, normalScale: 0.28, repeat: 1.85 },
 ];
+
+// Captura de baja resolución para transmisión difusa. Gasa y Tusor no son
+// vidrio alfa: conservan superficie, profundidad y trama, mientras el fondo se
+// percibe desenfocado a través de las fibras.
+const clothBackdropTarget = new THREE.WebGLRenderTarget(512, 288, {
+  minFilter: THREE.LinearFilter,
+  magFilter: THREE.LinearFilter,
+  depthBuffer: true,
+});
+clothBackdropTarget.texture.colorSpace = THREE.SRGBColorSpace;
+const clothViewport = new THREE.Vector2(1, 1);
+const clothTexel = new THREE.Vector2(1 / 512, 1 / 288);
 
 const texLoader = new THREE.TextureLoader();
 const fabricTextureCache = new Map();
@@ -580,8 +575,8 @@ function makeCurtainMaterial(p) {
     emissiveIntensity: 0,
     roughness: p.roughness,
     metalness: 0,
-    transparent: true,
-    opacity: p.opacity,
+    transparent: false,
+    opacity: 1,
     side: THREE.DoubleSide,
   });
   material.userData.shadowBlock = p.shadowBlock;
@@ -589,17 +584,38 @@ function makeCurtainMaterial(p) {
   // BRDF estándar y su transmisión sólo afecta sombra, haze y superficies.
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uClothRadianceCap = { value: p.radianceCap };
-    shader.fragmentShader = `uniform float uClothRadianceCap;\n${shader.fragmentShader}`
+    shader.uniforms.uClothBackdrop = { value: clothBackdropTarget.texture };
+    shader.uniforms.uClothViewport = { value: clothViewport };
+    shader.uniforms.uClothTexel = { value: clothTexel };
+    shader.uniforms.uFrostMix = { value: p.frostMix };
+    shader.uniforms.uFrostRadius = { value: p.frostRadius };
+    shader.fragmentShader = `uniform float uClothRadianceCap;
+      uniform sampler2D uClothBackdrop;
+      uniform vec2 uClothViewport;
+      uniform vec2 uClothTexel;
+      uniform float uFrostMix;
+      uniform float uFrostRadius;\n${shader.fragmentShader}`
       .replace('#include <opaque_fragment>', `
+        vec2 frostUv = gl_FragCoord.xy / uClothViewport;
+        vec2 frostStep = uClothTexel * uFrostRadius;
+        vec3 frost = texture2D(uClothBackdrop, frostUv).rgb * 0.24;
+        frost += texture2D(uClothBackdrop, frostUv + vec2(frostStep.x, 0.0)).rgb * 0.12;
+        frost += texture2D(uClothBackdrop, frostUv - vec2(frostStep.x, 0.0)).rgb * 0.12;
+        frost += texture2D(uClothBackdrop, frostUv + vec2(0.0, frostStep.y)).rgb * 0.12;
+        frost += texture2D(uClothBackdrop, frostUv - vec2(0.0, frostStep.y)).rgb * 0.12;
+        frost += texture2D(uClothBackdrop, frostUv + frostStep).rgb * 0.07;
+        frost += texture2D(uClothBackdrop, frostUv - frostStep).rgb * 0.07;
+        frost += texture2D(uClothBackdrop, frostUv + vec2(frostStep.x, -frostStep.y)).rgb * 0.07;
+        frost += texture2D(uClothBackdrop, frostUv + vec2(-frostStep.x, frostStep.y)).rgb * 0.07;
+        vec3 wovenFrost = frost * (0.9 + diffuseColor.rgb * 0.1);
+        outgoingLight = mix(outgoingLight, wovenFrost, uFrostMix);
         // Salvaguarda material: ningún pliegue textil puede convertirse en
         // fuente de bloom ni alcanzar el blanco exterior de la ventana.
         outgoingLight = min(outgoingLight, vec3(uClothRadianceCap));
         #include <opaque_fragment>
       `);
   };
-  material.customProgramCacheKey = () => `cloth-cap-${p.radianceCap}`;
-  material.customProgramCacheKey = () => 'cloth-window-bounce-v1';
-  material.forceSinglePass = p.opacity < 1;
+  material.customProgramCacheKey = () => `cloth-frost-${p.frostMix}-${p.frostRadius}-${p.radianceCap}`;
   return material;
 }
 
@@ -640,9 +656,9 @@ function makeShadowMaterial(p) {
 // Cada paño cubre poco más de la mitad de la ventana y cuelga entreabierto:
 // la luz pasa por el medio. Ondulado marcado como estado de reposo.
 // ---------------------------------------------------------------------------
-const COLS = qualityTier === 'full' ? 24 : 14;   // por paño
-const ROWS = qualityTier === 'full' ? 40 : 24;
-const ITERATIONS = qualityTier === 'full' ? 4 : 3;
+const COLS = qualityTier === 'full' ? 32 : 18;   // por paño
+const ROWS = qualityTier === 'full' ? 56 : 30;
+const ITERATIONS = qualityTier === 'full' ? 5 : 3;
 const nx = COLS + 1;
 
 const ANCHO_MIN = 60, ANCHO_MAX = 300, ANCHO_DEF = 120;
@@ -689,6 +705,16 @@ function createSim(side) {
         const i = sim.points.length - 1;
         if (x > 0) sim.constraints.push({ a: i - 1, b: i, len: sim.restSpacingX[x - 1] });
         if (y > 0) sim.constraints.push({ a: i - (COLS + 1), b: i, len: sy });
+        if (x > 0 && y > 0) {
+          const diag = Math.hypot(sim.restSpacingX[x - 1], sy);
+          sim.constraints.push({ a: i - (COLS + 2), b: i, len: diag, factor: 0.42 });
+        }
+        if (x < COLS && y > 0) {
+          const diag = Math.hypot(sim.restSpacingX[x], sy);
+          sim.constraints.push({ a: i - COLS, b: i, len: diag, factor: 0.42 });
+        }
+        if (x > 1) sim.constraints.push({ a: i - 2, b: i, len: sim.restSpacingX[x - 2] + sim.restSpacingX[x - 1], factor: 0.16 });
+        if (y > 1) sim.constraints.push({ a: i - 2 * (COLS + 1), b: i, len: sy * 2, factor: 0.12 });
       }
     }
   };
@@ -720,8 +746,8 @@ function createSim(side) {
       if (ptr && ptr.active) {
         const dx = p.x - ptr.x, dy = p.y - ptr.y;
         if (dx * dx + dy * dy < params.influence * params.influence) {
-          p.px = p.x - clamp(ptr.x - ptr.px, -params.dragCap, params.dragCap);
-          p.py = p.y - clamp(ptr.y - ptr.py, -params.dragCap, params.dragCap);
+          p.px = p.x - clamp(ptr.x - ptr.px, -params.dragCap, params.dragCap) * params.dragResponse;
+          p.py = p.y - clamp(ptr.y - ptr.py, -params.dragCap, params.dragCap) * params.dragResponse;
         }
       }
     }
@@ -730,7 +756,7 @@ function createSim(side) {
         const p1 = sim.points[c.a], p2 = sim.points[c.b];
         const dx = p2.x - p1.x, dy = p2.y - p1.y;
         const dist = Math.sqrt(dx * dx + dy * dy) || 0.0001;
-        const diff = (c.len - dist) / dist * params.stiffness;
+        const diff = (c.len - dist) / dist * params.stiffness * (c.factor ?? 1);
         const ox = dx * 0.5 * diff, oy = dy * 0.5 * diff;
         if (!p1.pinned) { p1.x -= ox; p1.y -= oy; }
         if (!p2.pinned) { p2.x += ox; p2.y += oy; }
@@ -762,7 +788,7 @@ function uploadGeometry(geo, sim) {
         const rest = sim.restSpacingX[x - 1] + sim.restSpacingX[x];
         compress = clamp((rest - span) / rest, 0, 1);
       }
-      const wave = Math.sin(p.u * Math.PI * 2 * PLEAT_COUNT) * (0.085 + compress * 0.12);
+      const wave = Math.sin(p.u * Math.PI * 2 * PLEAT_COUNT) * ((sim.product?.pleatDepth ?? 0.085) + compress * 0.12);
       pos.setXYZ(i, p.x, p.y, wave);
       uv.setXY(i, p.u, 1 - p.v);
     }
@@ -774,6 +800,7 @@ function uploadGeometry(geo, sim) {
 // un "set" = dos paños (izq + der) con el mismo material/producto
 function createSet(product) {
   const set = { sims: [createSim(-1), createSim(1)], meshes: [], visible: true };
+  set.sims.forEach((sim) => { sim.product = product; });
   set.geos = [makePanelGeometry(), makePanelGeometry()];
   for (let i = 0; i < 2; i++) {
     const mesh = new THREE.Mesh(set.geos[i], makeCurtainMaterial(product));
@@ -792,6 +819,11 @@ function createSet(product) {
     m.material = makeCurtainMaterial(product);
     m.customDepthMaterial = makeShadowMaterial(product);
   });
+  const setMaterialBase = set.setMaterial;
+  set.setMaterial = (product) => {
+    set.sims.forEach((sim) => { sim.product = product; });
+    setMaterialBase(product);
+  };
   set.opacity = () => set.meshes[0].material.opacity;
   return set;
 }
@@ -828,6 +860,25 @@ const curtainMeshes = new Set([...setA.meshes, ...setB.meshes]);
 const occCurtainMats = new Map([...curtainMeshes].map((mesh) => [
   mesh, new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true }),
 ]));
+
+let backdropFrame = 0;
+function renderClothBackdrop() {
+  // Una captura cada dos frames basta: la baja frecuencia refuerza la difusión
+  // textil y evita duplicar innecesariamente el costo del render principal.
+  backdropFrame += 1;
+  if (backdropFrame % 2 !== 0) return;
+  const visibility = new Map([...curtainMeshes].map((mesh) => [mesh, mesh.visible]));
+  curtainMeshes.forEach((mesh) => { mesh.visible = false; });
+  const prevTarget = renderer.getRenderTarget();
+  const prevShadowAuto = renderer.shadowMap.autoUpdate;
+  renderer.shadowMap.autoUpdate = false;
+  renderer.setRenderTarget(clothBackdropTarget);
+  renderer.clear(true, true, true);
+  renderer.render(scene, camera);
+  renderer.setRenderTarget(prevTarget);
+  renderer.shadowMap.autoUpdate = prevShadowAuto;
+  visibility.forEach((visible, mesh) => { mesh.visible = visible; });
+}
 
 function renderOcclusionPass() {
   const prevTarget = renderer.getRenderTarget();
@@ -955,7 +1006,8 @@ function updateNavScreenPosition() {
   navLeftWorld.set(-FULL_W * 0.61, y, backZ + 0.35).project(camera);
   navRightWorld.set(FULL_W * 0.61, y, backZ + 0.35).project(camera);
   const place = (button, point) => {
-    const x = clamp((point.x * 0.5 + 0.5) * r.width, 40, r.width - 40);
+    const edge = r.width <= 640 ? 58 : 66;
+    const x = clamp((point.x * 0.5 + 0.5) * r.width, edge, r.width - edge);
     const top = clamp((-point.y * 0.5 + 0.5) * r.height, 74, r.height - 170);
     button.style.left = `${x}px`;
     button.style.top = `${top}px`;
@@ -994,12 +1046,13 @@ function applyLightMix() {
   transmittedPoolMat.opacity = transmission * (1 - opening) * 0.07;
   // El radial blur 2D se mantiene fuera: al no conocer profundidad sumaba luz
   // por encima de la tela. La bruma 3D sí queda ocluida por cada paño.
-  godrayPass.uniforms.strength.value = 0;
+  // Bruma alineada con la ventana y ocluida por la tela. Reemplaza las capas
+  // aditivas que generaban luz falsa en la pared izquierda.
+  godrayPass.uniforms.strength.value = atmosphereEnergy * 0.16;
   shaftMat.uniforms.uIntensity.value = 0;
   // La ventana mantiene luminancia y bloom constantes. Al abrirse sólo queda
   // expuesta una superficie mayor; no se aumenta artificialmente su potencia.
   bloomPass.strength = 0.24;
-  wallBounceUniforms.level.value = 0.015 + 0.34 * Math.pow(sourceEnergy, 2);
   LATE.hazeStrength = atmosphereEnergy;
   LATE.sourceEnergy = sourceEnergy;
 }
@@ -1284,6 +1337,11 @@ function resize() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, QUALITY.dpr, pixelCapDpr));
   renderer.setSize(r.width, r.height, false);
   occlusionTarget.setSize(QUALITY.occlusion, Math.max(96, Math.round(QUALITY.occlusion / camera.aspect)));
+  const backdropW = qualityTier === 'full' ? 512 : 320;
+  const backdropH = Math.max(180, Math.round(backdropW / camera.aspect));
+  clothBackdropTarget.setSize(backdropW, backdropH);
+  renderer.getDrawingBufferSize(clothViewport);
+  clothTexel.set(1 / backdropW, 1 / backdropH);
   composer.setSize(r.width, r.height);
 }
 resize();
@@ -1350,6 +1408,7 @@ function loop(now) {
 
   updateLightScreenPos();
   updateNavScreenPosition();
+  renderClothBackdrop();
   renderOcclusionPass();
   composer.render();
   requestAnimationFrame(loop);

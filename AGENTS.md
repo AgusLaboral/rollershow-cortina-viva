@@ -38,17 +38,16 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
   pinza es el ESTADO DE REPOSO de la malla (`gatheredU()` agrupa las columnas
   periódicamente y los rest-lengths usan esa distancia) — no pelear contra la
   física para mantener pliegues. El bulge en Z compara span local vs reposo.
-- **Materiales de tela**: `MeshStandardMaterial` con alpha simple. PROHIBIDO
-  `transmission` (MeshPhysicalMaterial): tira el framerate al piso (render
-  interno extra por objeto) y no aporta nada — la opacidad ya deja ver el
-  fondo real 3D. La traslucidez por producto vive en `PRODUCTS[i].opacity`,
-  y su efecto atmosférico en `sunFactor`; la transmisión física de la sombra
-  vive en `shadowBlock` dentro del `customDepthMaterial`.
-- **Atmósfera**: la forma principal no es el viejo wedge geométrico. El haz
-  combina oclusión radial, bloom y 28/12 sprites de bruma suave
-  animados (full/lite). El plano con fBm queda sin intensidad para evitar las
-  diagonales rectas que Agus rechazó. No resolver con blur global: destruiría
-  pliegues y textura.
+- **Materiales de tela**: `MeshStandardMaterial` opaco con textura y normal. La
+  Gasa y el Tusor mezclan una captura reducida y desenfocada del fondo dentro
+  del shader (`frostMix` / `frostRadius`), conservando depthWrite y superficie
+  textil para evitar los triángulos de alpha sorting. PROHIBIDO `transmission`
+  de `MeshPhysicalMaterial`: agrega un render interno por objeto. La transmisión
+  de luz ambiental vive en `sunFactor`; la sombra, en `shadowBlock`.
+- **Atmósfera**: el haz combina oclusión radial y bloom. La bruma nace del pase
+  de oclusión alineado con el vano; no usa sprites aditivos, porque generaban
+  una falsa fuente ámbar sobre la pared izquierda. No resolver con blur global:
+  destruiría pliegues y textura.
 - **Receptor de luz**: el piso PBR es el receptor principal. Sólo el sol
   exterior lo ilumina; pared perforada, marco y tela viva dibujan la huella en
   el shadow map. Fuera del haz queda oscuro. La carpintería argentina es blanca.
@@ -56,7 +55,7 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
   detalladas). Telas: `img/tela-*.png` (gpt-image-1 + mirror-tiling en
   `scripts/generate-assets.mjs`) + normal maps derivados
   (`scripts/generate-normals.mjs`, Sobel sobre luminancia, no gastan API).
-  Paredes/piso: PBR reales CC0 en `img/env/` (plaster + Porcelain001).
+  Paredes/piso: PBR reales CC0 en `img/env/` (plaster + Marble005 de ambientCG).
 - **Interacción**: hover SIN clic en desktop (mouseenter/mousemove), dedo en
   mobile (touchmove con preventDefault), acelerómetro (`deviceorientation`,
   permiso iOS pedido en el primer gesto táctil, sin botón dedicado). El
@@ -94,7 +93,22 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-16 (ronda r40)
+## Estado al 2026-07-16 (ronda r42)
+
+La interfaz usa el manual RollerShow v2.2 como fuente visual: wordmark oficial,
+Bricolage Grotesque para producto, Manrope para UI, Rojo Teja como única acción,
+navegación con palabra e icono y un único panel Crema para medidas y cotización.
+El piso usa Marble005 CC0 con mapas de color, normal y roughness, placas de
+120x80 cm y juntas de 4 mm. Se eliminaron el rebote emisivo de pared y los
+sprites de haze que producían la luz falsa izquierda.
+
+Blackout tiene menor respuesta al arrastre, más gravedad, amortiguación y
+profundidad de pliegue. Gasa y Tusor usan transmisión difusa frost dentro de un
+material opaco, con distinta difusión y bloqueo de sombra. La malla full/lite
+subió a 32x56 / 18x30, sumó constraints diagonales y de bending y dejó de mostrar
+triángulos por ordenamiento alfa.
+
+### Histórico r40 (reemplazado por r42)
 
 La escena usa porcelanato PBR blanco (`porcelain_diff/nor/rough.jpg`, ambientCG
 Porcelain001 CC0) con micro-relieve, roughness, clearcoat y juntas de placas

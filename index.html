@@ -3,308 +3,60 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Rollershow — Cortinas tradicionales</title>
+<title>RollerShow | Cortinas tradicionales</title>
 <meta name="description" content="Blackout, Gasa y Tusor. Mové la tela, compará cómo filtra la luz y elegí la medida de tu cortina tradicional.">
-<meta name="theme-color" content="#090908">
+<meta name="theme-color" content="#1C1816">
 <script type="importmap">
 { "imports": {
-    "three": "https://unpkg.com/three@0.169.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.169.0/examples/jsm/"
+  "three": "https://unpkg.com/three@0.169.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.169.0/examples/jsm/"
 } }
 </script>
 <style>
-  :root{
-    color-scheme:dark;
-    --ink:#f3efe8;
-    --muted:#b9b3aa;
-    --panel-ink:#f3efe8;
-    --panel-muted:#b9b3aa;
-    --accent:#C63A21;
-    --accent-ink:#fff;
-  }
-  *{ box-sizing:border-box; margin:0; padding:0; }
-  html,body{ height:100%; }
-  body{
-    background:#090908;
-    color:var(--ink);
-    font-family:system-ui, -apple-system, 'Segoe UI', sans-serif;
-    -webkit-font-smoothing:antialiased;
-    overflow:hidden;
-  }
-
-  .stage{ position:relative; width:100vw; height:100svh; }
-  canvas#scene{ position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:none; }
-
-  .product-label{
-    position:absolute;
-    left:6%;
-    bottom:9%;
-    z-index:4;
-    pointer-events:none;
-    transition:bottom .5s cubic-bezier(.16,1,.3,1);
-  }
-  .product-label.raised{ bottom:23%; }
-  .product-label .name,
-  .product-label .color{
-    display:block;
-    transition:opacity .35s ease, transform .35s ease;
-  }
-  .product-label .name{
-    font-family:Georgia, 'Iowan Old Style', 'Times New Roman', serif;
-    font-style:italic;
-    font-weight:500;
-    font-size:clamp(30px, 7vw, 44px);
-    line-height:1;
-    text-shadow:0 2px 18px rgba(0,0,0,.85), 0 1px 4px rgba(0,0,0,.95);
-  }
-  .product-label .color{
-    font-size:12px;
-    letter-spacing:.14em;
-    text-transform:uppercase;
-    color:var(--muted);
-    margin-top:8px;
-    text-shadow:0 2px 12px rgba(0,0,0,.9);
-  }
-  .product-label.switching .name,
-  .product-label.switching .color{
-    opacity:0;
-    transform:translateY(6px);
-  }
-
-  .nav-btn{
-    position:absolute;
-    transform:translate(-50%,-50%);
-    z-index:5;
-    width:72px; height:72px;
-    display:flex; align-items:center; justify-content:center;
-    background:none; border:none;
-    color:var(--ink);
-    cursor:pointer;
-    opacity:.94;
-    transition:opacity .2s ease, transform .2s ease;
-  }
-  .nav-btn::before{
-    content:"";
-    position:absolute;
-    inset:8px;
-    border:1px solid rgba(255,255,255,.46);
-    border-radius:50%;
-    background:rgba(24,22,19,.34);
-    box-shadow:0 0 24px rgba(255,205,143,.32), inset 0 0 18px rgba(255,255,255,.08);
-    backdrop-filter:blur(12px);
-    transition:background .2s ease, box-shadow .2s ease, transform .2s ease;
-  }
-  .nav-btn:hover::before{
-    background:rgba(255,225,184,.2);
-    box-shadow:0 0 34px rgba(255,194,119,.64), inset 0 0 20px rgba(255,255,255,.16);
-    transform:scale(1.06);
-  }
-  .nav-btn:active{ transform:translate(-50%,-50%) scale(.92); }
-  .nav-btn:disabled{ opacity:.25; pointer-events:none; }
-  .nav-btn svg{ position:relative; z-index:1; width:34px; height:34px; filter:drop-shadow(0 2px 8px rgba(0,0,0,.85)); }
-
-  .measure-panel{
-    position:absolute;
-    left:0; right:0; bottom:0;
-    z-index:6;
-    width:100%;
-    padding:34px max(5vw, calc((100vw - 760px) / 2)) 24px;
-    color:var(--panel-ink);
-    background:linear-gradient(to top, rgba(10,9,8,.96), rgba(10,9,8,.78) 62%, rgba(10,9,8,0));
-    backdrop-filter:blur(10px);
-    display:flex;
-    flex-wrap:wrap;
-    align-items:center;
-    justify-content:center;
-    gap:52px;
-    transform:translateY(18px);
-    opacity:0;
-    pointer-events:none;
-    transition:opacity .6s cubic-bezier(.16,1,.3,1), transform .6s cubic-bezier(.16,1,.3,1);
-  }
-  .measure-panel.visible{ opacity:1; transform:translateY(0); pointer-events:auto; }
-
-  .stepper-row{ display:flex; gap:28px; }
-  .stepper{ display:flex; flex-direction:column; gap:8px; }
-  .stepper .stepper-label{
-    font-size:11px;
-    letter-spacing:.12em;
-    text-transform:uppercase;
-    color:var(--panel-muted);
-  }
-  .stepper .controls{
-    display:flex;
-    align-items:baseline;
-    gap:0;
-    border-bottom:1px solid rgba(243,239,232,.5);
-    padding-bottom:5px;
-  }
-  .stepper button{
-    background:none;
-    border:none;
-    color:var(--panel-ink);
-    font-size:22px;
-    line-height:1;
-    cursor:pointer;
-    width:44px;
-    height:44px;
-    padding:0;
-    opacity:.75;
-  }
-  .stepper button:hover{ opacity:1; }
-  .stepper .value{
-    font-variant-numeric:tabular-nums;
-    font-size:26px;
-    min-width:2.2ch;
-    text-align:center;
-  }
-  .stepper .unit{ font-size:12px; color:var(--panel-muted); margin-left:2px; }
-
-  .cta{
-    background:var(--accent);
-    color:var(--accent-ink);
-    border:none;
-    min-height:52px;
-    padding:15px 26px;
-    border-radius:3px;
-    font-size:15px;
-    font-weight:600;
-    text-decoration:none;
-    display:inline-flex;
-    align-items:center;
-    gap:9px;
-    white-space:nowrap;
-    box-shadow:0 8px 24px rgba(198,58,33,.35);
-    transition:transform .15s ease, box-shadow .15s ease;
-  }
-  .cta:hover{ transform:translateY(-1px); box-shadow:0 10px 28px rgba(198,58,33,.45); }
-  .cta:active{ transform:translateY(0); }
-  .cta svg{ width:18px; height:18px; }
-
-  .hint{
-    position:absolute;
-    left:6%;
-    top:8%;
-    z-index:4;
-    font-size:11.5px;
-    letter-spacing:.06em;
-    color:var(--muted);
-    text-shadow:0 2px 10px rgba(0,0,0,.95);
-    opacity:1;
-    transition:opacity .5s ease;
-  }
-  .hint.hidden{ opacity:0; }
-
-  .mute-btn{
-    position:absolute;
-    top:5%;
-    right:4%;
-    z-index:5;
-    width:44px; height:44px;
-    display:flex; align-items:center; justify-content:center;
-    background:none; border:none;
-    color:var(--muted);
-    cursor:pointer;
-    opacity:.78;
-    transition:opacity .2s ease;
-  }
-  .mute-btn:hover{ opacity:1; }
-  .mute-btn svg{ width:19px; height:19px; filter:drop-shadow(0 2px 6px rgba(0,0,0,.9)); }
-  .mute-btn .off{ display:none; }
-  .mute-btn.muted .on{ display:none; }
-  .mute-btn.muted .off{ display:block; }
-
-  button:focus-visible,
-  .cta:focus-visible{
-    outline:2px solid #fff;
-    outline-offset:3px;
-  }
-
-  @media (max-width:640px){
-    .product-label.raised{ bottom:34%; }
-    .product-label .name{
-      text-shadow:0 2px 14px rgba(0,0,0,.95), 0 1px 3px #000;
-    }
-    .nav-btn{ width:60px; height:60px; }
-    .nav-btn::before{ inset:7px; }
-    .nav-btn svg{ width:29px; height:29px; }
-    .measure-panel{
-      left:0; right:0; bottom:0;
-      width:100%;
-      padding:28px 6% max(24px, env(safe-area-inset-bottom));
-      background:linear-gradient(to top, rgba(9,9,8,.985), rgba(9,9,8,.9) 62%, rgba(9,9,8,0));
-      border:0;
-      backdrop-filter:none;
-      transform:translateY(18px);
-      gap:18px;
-    }
-    .measure-panel.visible{ transform:translateY(0); }
-    .stepper-row{ width:100%; justify-content:space-between; gap:18px; }
-    .stepper{ flex:1; }
-    .stepper .controls{ justify-content:space-between; }
-    .cta{ width:100%; justify-content:center; }
-  }
-  @media (min-width:641px){
-    .product-label,
-    .product-label.raised{
-      top:17%;
-      bottom:auto;
-    }
-  }
+@font-face{font-family:"Bricolage Grotesque";src:url("assets/brand/bricolage-grotesque-latin-variable.woff2") format("woff2");font-weight:400 800;font-display:swap}
+@font-face{font-family:Manrope;src:url("assets/brand/manrope-latin-variable.woff2") format("woff2");font-weight:400 700;font-display:swap}
+:root{color-scheme:dark;--cream:#FAF7F2;--white:#FFF;--sand:#F1EBE0;--ink:#1C1816;--soft:#4A4039;--muted:#87796D;--line:#E4DCCE;--line-strong:#C8BCA8;--terracotta:#B8662C;--accent:#C63A21;--accent-deep:#97290F}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--ink);color:var(--cream);font-family:Manrope,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
+.stage{position:relative;width:100vw;height:100svh}
+canvas#scene{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.brand-header{position:absolute;inset:0 0 auto;z-index:7;min-height:88px;padding:24px clamp(22px,4vw,56px);display:flex;align-items:flex-start;justify-content:space-between;pointer-events:none;background:linear-gradient(to bottom,rgba(28,24,22,.72),rgba(28,24,22,0))}
+.brand-header a{pointer-events:auto}.brand-logo{width:min(42vw,196px);height:auto;display:block}
+.hint{position:absolute;left:clamp(22px,6vw,86px);top:108px;z-index:4;font-size:12px;color:#d9d0c6;text-shadow:0 2px 10px #000;transition:opacity .48s ease}.hint.hidden{opacity:0}
+.mute-btn{position:absolute;top:22px;right:clamp(18px,4vw,54px);z-index:8;min-width:92px;height:44px;padding:0 10px;display:flex;align-items:center;justify-content:center;gap:8px;background:rgba(28,24,22,.42);border:1px solid rgba(255,255,255,.2);border-radius:8px;color:var(--cream);font:600 12px/1 Manrope,sans-serif;cursor:pointer;transition:background .18s ease}.mute-btn:hover{background:rgba(28,24,22,.7)}.mute-btn svg{width:19px;height:19px}.mute-btn .off{display:none}.mute-btn.muted .on{display:none}.mute-btn.muted .off{display:block}
+.product-label{position:absolute;left:clamp(22px,6vw,86px);bottom:11%;z-index:4;pointer-events:none;transition:bottom .48s cubic-bezier(.16,1,.3,1)}.product-label.raised{bottom:24%}.product-label .name,.product-label .color{display:block;transition:opacity .35s ease,transform .35s ease}.product-label .name{font:650 clamp(34px,5vw,58px)/1.02 "Bricolage Grotesque",sans-serif;letter-spacing:-.04em;text-shadow:0 2px 18px rgba(0,0,0,.85)}.product-label .color{font-size:13px;color:#d9d0c6;margin-top:8px;text-shadow:0 2px 12px #000}.product-label.switching .name,.product-label.switching .color{opacity:0;transform:translateY(6px)}
+.nav-btn{position:absolute;transform:translate(-50%,-50%);z-index:5;min-width:118px;min-height:48px;padding:0 14px;display:flex;align-items:center;justify-content:center;gap:9px;background:rgba(250,247,242,.94);border:1px solid rgba(228,220,206,.82);border-radius:8px;color:var(--ink);font:600 13px/1 Manrope,sans-serif;cursor:pointer;transition:background .18s ease,border-color .18s ease,transform .18s ease}.nav-btn:hover{background:var(--white);border-color:var(--line-strong);transform:translate(-50%,calc(-50% - 1px))}.nav-btn:active{transform:translate(-50%,-50%)}.nav-btn:disabled{opacity:.3;pointer-events:none}.nav-btn svg{width:22px;height:22px;flex:none}
+.measure-panel{position:absolute;left:0;right:0;bottom:0;z-index:6;margin:0 auto 24px;width:min(calc(100% - 48px),820px);padding:18px 20px;color:var(--ink);background:rgba(250,247,242,.97);border:1px solid var(--line);border-radius:14px;box-shadow:0 18px 54px rgba(0,0,0,.28);display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:24px;transform:translateY(18px);opacity:0;pointer-events:none;transition:opacity .48s cubic-bezier(.16,1,.3,1),transform .48s cubic-bezier(.16,1,.3,1)}.measure-panel.visible{opacity:1;transform:translateY(0);pointer-events:auto}
+.stepper-row{display:flex;gap:14px}.stepper{display:flex;flex-direction:column;gap:7px}.stepper-label{font-size:11px;color:var(--muted)}.controls{display:grid;grid-template-columns:44px minmax(72px,auto) 44px;align-items:center;min-height:48px;border:1.5px solid var(--line);border-radius:14px;background:var(--white);overflow:hidden}.stepper button{width:44px;height:46px;border:0;background:none;color:var(--ink);font:400 22px/1 Manrope,sans-serif;cursor:pointer}.stepper button:hover{background:var(--sand)}.measure{display:flex;align-items:baseline;justify-content:center}.value{font-variant-numeric:tabular-nums;font-size:18px;font-weight:650;min-width:3ch;text-align:center}.unit{font-size:12px;color:var(--muted);margin-left:5px}
+.cta{min-height:48px;padding:14px 22px;border-radius:6px;background:var(--accent);color:var(--white);font:600 14px/1 Manrope,sans-serif;text-decoration:none;display:inline-flex;align-items:center;gap:9px;white-space:nowrap;box-shadow:0 8px 20px rgba(151,41,15,.22);transition:background .15s ease,transform .15s ease,box-shadow .15s ease}.cta:hover{background:var(--accent-deep);transform:translateY(-1px);box-shadow:0 10px 26px rgba(151,41,15,.28)}.cta:active{transform:translateY(1px)}.cta svg{width:18px;height:18px}
+button:focus-visible,.cta:focus-visible,a:focus-visible{outline:2px solid var(--terracotta);outline-offset:3px}
+@media(min-width:641px){.product-label,.product-label.raised{top:18%;bottom:auto}}
+@media(max-width:640px){.brand-header{min-height:72px;padding:20px}.brand-logo{width:min(58vw,172px)}.hint{left:20px;top:86px;max-width:55vw;line-height:1.45}.mute-btn{top:14px;right:14px;min-width:44px;width:44px;padding:0}.mute-btn span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}.product-label{left:20px;bottom:29%}.product-label.raised{bottom:37%}.product-label .name{font-size:34px}.nav-btn{min-width:104px;min-height:44px;padding:0 10px}.measure-panel{width:100%;margin:0;padding:16px 18px max(16px,env(safe-area-inset-bottom));background:var(--cream);border:0;border-top:1px solid var(--line);border-radius:0;gap:14px}.stepper-row{width:100%;gap:10px}.stepper{flex:1}.controls{grid-template-columns:44px minmax(48px,1fr) 44px}.cta{width:100%;justify-content:center}}
+@media(max-width:370px){.nav-btn{min-width:96px;font-size:12px}.measure-panel{padding-inline:12px}.stepper-row{gap:7px}.controls{grid-template-columns:40px minmax(44px,1fr) 40px}.stepper button{width:40px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:0ms!important;animation-duration:0ms!important}}
 </style>
 </head>
 <body>
-  <main class="stage">
-    <canvas id="scene"></canvas>
-
-    <p class="hint" id="hint">Movela con el dedo, el mouse, o inclinando el teléfono</p>
-
-    <button class="mute-btn" id="muteBtn" aria-label="Silenciar música">
-      <svg class="on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18 6a8.5 8.5 0 0 1 0 12"/></svg>
-      <svg class="off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>
-    </button>
-
-    <div class="product-label" id="productLabel">
-      <span class="name" id="productName">Blackout</span>
-      <span class="color" id="productColor">Blanco</span>
+<main class="stage">
+  <canvas id="scene"></canvas>
+  <header class="brand-header"><a href="https://www.rollershow.com.ar/" aria-label="RollerShow, ir al sitio"><img class="brand-logo" src="assets/brand/rollershow-logo-static-blanco.svg" alt="RollerShow"></a></header>
+  <p class="hint" id="hint">Movela con el dedo, el mouse o inclinando el teléfono</p>
+  <button class="mute-btn" id="muteBtn" aria-label="Silenciar música">
+    <svg class="on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18 6a8.5 8.5 0 0 1 0 12"/></svg>
+    <svg class="off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg><span>Sonido</span>
+  </button>
+  <div class="product-label" id="productLabel" aria-live="polite"><span class="name" id="productName">Blackout</span><span class="color" id="productColor">Blanco</span></div>
+  <button class="nav-btn nav-prev" id="prevBtn" aria-label="Producto anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg><span>Anterior</span></button>
+  <button class="nav-btn nav-next" id="nextBtn" aria-label="Producto siguiente"><span>Siguiente</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
+  <div class="measure-panel" id="measurePanel">
+    <div class="stepper-row">
+      <div class="stepper"><span class="stepper-label">Ancho</span><div class="controls"><button type="button" data-step="ancho" data-dir="-1" aria-label="Reducir ancho">−</button><span class="measure"><span class="value" id="anchoValue">120</span><span class="unit">cm</span></span><button type="button" data-step="ancho" data-dir="1" aria-label="Aumentar ancho">+</button></div></div>
+      <div class="stepper"><span class="stepper-label">Alto</span><div class="controls"><button type="button" data-step="alto" data-dir="-1" aria-label="Reducir alto">−</button><span class="measure"><span class="value" id="altoValue">150</span><span class="unit">cm</span></span><button type="button" data-step="alto" data-dir="1" aria-label="Aumentar alto">+</button></div></div>
     </div>
-
-    <button class="nav-btn nav-prev" id="prevBtn" aria-label="Producto anterior">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
-    </button>
-    <button class="nav-btn nav-next" id="nextBtn" aria-label="Producto siguiente">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
-    </button>
-
-    <div class="measure-panel" id="measurePanel">
-      <div class="stepper-row">
-        <div class="stepper">
-          <span class="stepper-label">Ancho</span>
-          <div class="controls">
-            <button type="button" data-step="ancho" data-dir="-1" aria-label="Reducir ancho">−</button>
-            <span class="value" id="anchoValue">120</span>
-            <span class="unit">cm</span>
-            <button type="button" data-step="ancho" data-dir="1" aria-label="Aumentar ancho">+</button>
-          </div>
-        </div>
-        <div class="stepper">
-          <span class="stepper-label">Alto</span>
-          <div class="controls">
-            <button type="button" data-step="alto" data-dir="-1" aria-label="Reducir alto">−</button>
-            <span class="value" id="altoValue">150</span>
-            <span class="unit">cm</span>
-            <button type="button" data-step="alto" data-dir="1" aria-label="Aumentar alto">+</button>
-          </div>
-        </div>
-      </div>
-
-      <a class="cta" id="ctaQuote" href="https://www.rollershow.com.ar/cotizar/tradicionales" aria-label="Cotizar tu cortina tradicional en RollerShow">
-        Cotizá tu cortina
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m14 6 6 6-6 6"/></svg>
-      </a>
-    </div>
-  </main>
-
+    <a class="cta" id="ctaQuote" href="https://www.rollershow.com.ar/cotizar/tradicionales" aria-label="Cotizar cortinas a medida en RollerShow">Cotizá tus cortinas a medida<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m14 6 6 6-6 6"/></svg></a>
+  </div>
+</main>
 <script type="module" src="main.js"></script>
 </body>
 </html>
