@@ -93,7 +93,31 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-16 (ronda r51)
+## Estado al 2026-07-16 (ronda r52)
+
+El pie se rehizo como un dobladillo estructurado, no como una fila de vertices
+parchada. Un peso continuo distribuye la tension entre vecinos, mantiene las
+filas en orden vertical y evita que el cuerpo atraviese el borde inferior. La
+costura visual conserva el pliegue en profundidad con amplitud reducida y una
+ondulacion de 2,5 mm; ya no colapsa toda la Z a cero ni genera dientes, abanicos
+triangulares o tela doblada hacia arriba. El largo configurado es ahora un
+limite fisico: ninguna parte del pano termina por debajo del ruedo.
+
+Blackout conserva gravedad y masa mayores, pero deja de sentirse inmovil. Baja
+su rigidez localizada, amplifica el area y la respuesta del gesto y conserva
+mas inercia, sin tocar opacidad, sombra, radiancia ni el motor frost aprobado.
+La malla impide inversiones verticales durante un gesto fuerte, por lo que el
+movimiento adicional no abre fugas de luz entre triangulos.
+
+QA r52: Playwright recorrio full/lite, Blackout/Gasa/Tusor y alturas
+150/200/260. En las 18 combinaciones `minY` coincide con `hemMinY`, sin ningun
+vertice por debajo del pie, errores de consola ni overflow. Se revisaron
+capturas mobile/desktop en reposo, movimiento y asentamiento; el Blackout se
+desplaza visiblemente y recupera una caida continua. La metrica nueva mide
+quiebres locales proyectados contra el segmento vecino, no contra el espaciado
+irregular de columnas plegadas.
+
+### Estado r51 preservado
 
 El ruedo ya no conserva la onda Z del cuerpo hasta el ultimo vertice. Una banda
 fisica de dobladillo de 16 cm aplana gradualmente la profundidad en todo el

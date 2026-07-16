@@ -547,7 +547,7 @@ buildWindow();
 // ---------------------------------------------------------------------------
 const PRODUCTS = [
   { name: 'Blackout', color: 'Blanco', tex: 'img/fabric/blackout-albedo.jpg', normal: 'img/fabric/blackout-nor.png',
-    stiffness: 0.974, gravity: 8.35, friction: 0.958, influence: 0.5, dragCap: 0.056, dragResponse: 0.46, edgeStraighten: 0.86, hemStraighten: 0.62, pleatDepth: 0.095, compressionDepth: 0.04, roughness: 0.92,
+    stiffness: 0.952, gravity: 7.8, friction: 0.971, influence: 0.66, dragCap: 0.068, dragResponse: 0.74, edgeStraighten: 0.5, hemStraighten: 0.36, pleatDepth: 0.095, compressionDepth: 0.052, roughness: 0.92,
     opacity: 1, frostMix: 0, frostLod: 0, weaveStrength: 0, foldShade: 0.34, backfaceCap: 0.18, castShadow: true, shadowBlock: 1, tint: 0xffffff, sunFactor: 0, backlight: 0, radianceCap: 0.34, normalScale: 0.14, repeat: 1.6 },
   { name: 'Gasa', color: 'Beige', tex: 'img/fabric/gasa.jpg', normal: 'img/fabric/gasa-nor.png',
     stiffness: 0.93, gravity: 6.2, friction: 0.968, influence: 0.58, dragCap: 0.07, dragResponse: 0.86, edgeStraighten: 0.65, hemStraighten: 0.46, pleatDepth: 0.075, compressionDepth: 0.08, roughness: 0.88,
@@ -831,22 +831,75 @@ function createSim(side) {
       }
     }
     const hemStart = ROWS * nx;
+    const penultimateStart = (ROWS - 1) * nx;
+    let naturalHemY = 0;
+    for (let x = 0; x <= COLS; x++) naturalHemY += sim.points[penultimateStart + x].y;
+    naturalHemY = naturalHemY / nx - H_M / ROWS;
+    const sharedHemY = clamp(
+      lerp(CURTAIN_BOTTOM, naturalHemY, 0.24),
+      Math.max(FLOOR_Y + HEM_CLEARANCE, CURTAIN_BOTTOM - 0.008),
+      CURTAIN_BOTTOM + 0.018,
+    );
     for (let x = 0; x <= COLS; x++) {
       const i = hemStart + x;
-      const dy = (CURTAIN_BOTTOM - sim.points[i].y) * params.hemStraighten;
+      const dy = (sharedHemY - sim.points[i].y) * params.hemStraighten;
       sim.points[i].y += dy;
       sim.points[i].py += dy;
+      const hemFloor = sharedHemY - 0.004;
+      if (sim.points[i].y < hemFloor) {
+        const lift = hemFloor - sim.points[i].y;
+        sim.points[i].y += lift;
+        sim.points[i].py += lift;
+      }
     }
-    // El peso del dobladillo permite que el ruedo acompañe el movimiento como
-    // conjunto, pero no que cada vertice dibuje un diente independiente.
-    let hemAverageY = 0;
-    for (let x = 0; x <= COLS; x++) hemAverageY += sim.points[hemStart + x].y;
-    hemAverageY /= nx;
-    for (let x = 0; x <= COLS; x++) {
-      const p = sim.points[hemStart + x];
-      const dy = (hemAverageY - p.y) * 0.9;
-      p.y += dy;
-      p.py += dy;
+    // El peso continuo reparte tension entre vecinos sin convertir el ruedo
+    // entero en una regla rigida. Asi acompana la oscilacion larga del pano.
+    for (let pass = 0; pass < 2; pass++) {
+      const smoothed = [];
+      for (let x = 1; x < COLS; x++) {
+        const left = sim.points[hemStart + x - 1].y;
+        const mid = sim.points[hemStart + x].y;
+        const right = sim.points[hemStart + x + 1].y;
+        smoothed[x] = mid + ((left + right) * 0.5 - mid) * 0.46;
+      }
+      for (let x = 1; x < COLS; x++) {
+        const p = sim.points[hemStart + x];
+        const dy = smoothed[x] - p.y;
+        p.y += dy;
+        p.py += dy;
+      }
+    }
+    // La banda cosida no puede darse vuelta sobre si misma. El peso inferior
+    // mantiene las ultimas filas en orden vertical y evita que el cuerpo caiga
+    // por debajo del borde para luego doblarse hacia arriba.
+    const rowSpacing = H_M / ROWS;
+    const structuredRows = Math.max(2, Math.ceil(HEM_BAND_M / rowSpacing));
+    for (let y = ROWS - 1; y >= ROWS - structuredRows; y--) {
+      for (let x = 0; x <= COLS; x++) {
+        const p = sim.points[y * nx + x];
+        const below = sim.points[(y + 1) * nx + x];
+        const minY = below.y + rowSpacing * 0.38;
+        if (p.y < minY) {
+          const dy = minY - p.y;
+          p.y += dy;
+          p.py += dy;
+        }
+      }
+    }
+    // Una cortina colgada puede plegarse en profundidad y desplazarse de lado,
+    // pero una fila superior no atraviesa a la inferior. Esta condicion simple
+    // impide triangulos invertidos y fugas de la ventana durante un gesto.
+    for (let y = ROWS - structuredRows - 1; y >= 1; y--) {
+      for (let x = 0; x <= COLS; x++) {
+        const p = sim.points[y * nx + x];
+        const below = sim.points[(y + 1) * nx + x];
+        const minY = below.y + rowSpacing * 0.06;
+        if (p.y < minY) {
+          const dy = minY - p.y;
+          p.y += dy;
+          p.py += dy;
+        }
+      }
     }
     // CURTAIN_BOTTOM define el largo visual, no una superficie de choque.
     // La unica colision horizontal real es el piso.
@@ -862,6 +915,15 @@ function createSim(side) {
 function makePanelGeometry() { return new THREE.PlaneGeometry(1, 1, COLS, ROWS); }
 function uploadGeometry(geo, sim) {
   const pos = geo.attributes.position, uv = geo.attributes.uv;
+  const hemStart = ROWS * nx;
+  let hemCenterY = 0;
+  for (let x = 0; x <= COLS; x++) hemCenterY += sim.points[hemStart + x].y;
+  hemCenterY = clamp(
+    hemCenterY / nx,
+    Math.max(FLOOR_Y + HEM_CLEARANCE, CURTAIN_BOTTOM - 0.008),
+    CURTAIN_BOTTOM + 0.018,
+  );
+  const hemBandStart = 1 - Math.min(0.35, HEM_BAND_M / Math.max(H_M, HEM_BAND_M));
   for (let y = 0; y <= ROWS; y++) {
     for (let x = 0; x <= COLS; x++) {
       const i = y * nx + x;
@@ -886,11 +948,18 @@ function uploadGeometry(geo, sim) {
       const edgeDistance = Math.min(p.u, 1 - p.u);
       const sewnCornerTaper = smoothstep(0, 0.14, edgeDistance);
       const cornerDepth = lerp(1, sewnCornerTaper, hemBlend);
-      const hemBandStart = 1 - Math.min(0.35, HEM_BAND_M / Math.max(H_M, HEM_BAND_M));
-      const hemDepth = 1 - smoothstep(hemBandStart, 1, p.v);
+      const hemProfile = smoothstep(hemBandStart, 1, p.v);
+      // El dobladillo sigue siendo tela plegada. La amplitud converge a un
+      // pliegue estable; no colapsa a Z=0 ni abre un abanico de triangulos.
+      const hemDepth = lerp(1, 0.36, hemProfile);
       const wave = Math.sin(p.u * Math.PI * 2 * PLEAT_COUNT)
         * (baseDepth + dynamicDepth) * cornerDepth * hemDepth;
-      pos.setXYZ(i, p.x, p.y, wave);
+      // Una costura continua de pocos milimetros reemplaza los vertices
+      // independientes del pie. La fisica mueve el conjunto y esta curva
+      // conserva una silueta organica, lisa y repetible.
+      const hemRipple = Math.sin(p.u * Math.PI * 2 * PLEAT_COUNT) * 0.0025;
+      const visualY = lerp(p.y, hemCenterY + hemRipple, hemProfile);
+      pos.setXYZ(i, p.x, visualY, wave);
       uv.setXY(i, p.u, 1 - p.v);
     }
   }
@@ -1682,11 +1751,24 @@ window.__cortina = {
         const distance = Math.abs(lineDy * x - lineDx * y + lineEndX * lineStartY - lineEndY * lineStartX) / lineLength;
         hemProjectedDeviationPx = Math.max(hemProjectedDeviationPx, distance);
       }
+      let hemProjectedKinkPx = 0;
+      for (let i = 1; i < projectedHem.length - 1; i++) {
+        const [leftX, leftY] = projectedHem[i - 1];
+        const [midX, midY] = projectedHem[i];
+        const [rightX, rightY] = projectedHem[i + 1];
+        const neighborDx = rightX - leftX;
+        const neighborDy = rightY - leftY;
+        const neighborLength = Math.hypot(neighborDx, neighborDy) || 1;
+        const localDistance = Math.abs(
+          neighborDy * midX - neighborDx * midY + rightX * leftY - rightY * leftX,
+        ) / neighborLength;
+        hemProjectedKinkPx = Math.max(hemProjectedKinkPx, localDistance);
+      }
       return {
         visible: m.visible, opacity: m.material?.opacity ?? null,
         minX, maxX, minY, maxY, minZ, maxZ, hemMinY, hemMaxY, hemMaxAbsZ,
         outerEdgeMinX, outerEdgeMaxX, outerEdgeSpan: outerEdgeMaxX - outerEdgeMinX,
-        outerEdgeCurveMax, bottomCornerDepth, hemProjectedDeviationPx,
+        outerEdgeCurveMax, bottomCornerDepth, hemProjectedDeviationPx, hemProjectedKinkPx,
       };
     }),
   }),
