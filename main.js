@@ -149,34 +149,45 @@ new RGBELoader().load('img/env/sunset.hdr', (hdr) => {
   scene.environmentRotation = new THREE.Euler(0, ENV_ROT, 0);
 });
 
-// Porcelanato PBR claro: color, relieve y rugosidad provienen de mapas CC0.
-// Las juntas grandes dan escala; el clearcoat bajo conserva el reflejo cálido.
+// Porcelanato PBR blanco: micro-relieve/roughness de Porcelain001 (CC0) y
+// juntas arquitectónicas en world-space. Así la escala no depende del tamaño
+// del plano ni se convierte en un mosaico de piedra/barro al repetir el mapa.
 const floorColorMap = surfaceLoader.load('img/env/porcelain_diff.jpg');
 const floorNormalMap = surfaceLoader.load('img/env/porcelain_nor.jpg');
 const floorRoughnessMap = surfaceLoader.load('img/env/porcelain_rough.jpg');
 for (const texture of [floorColorMap, floorNormalMap, floorRoughnessMap]) {
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-  // La geometria mide 200 unidades: este repeat deja tablas de escala real
-  // dentro del encuadre sin evidenciar el mosaico de la textura.
-  texture.repeat.set(42, 42);
+  texture.repeat.set(48, 48);
   texture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), qualityTier === 'full' ? 8 : 2);
 }
 floorColorMap.colorSpace = THREE.SRGBColorSpace;
-const floor = new THREE.Mesh(
-  new THREE.PlaneGeometry(200, 200),
-  new THREE.MeshPhysicalMaterial({
+const floorMaterial = new THREE.MeshPhysicalMaterial({
     map: floorColorMap,
     normalMap: floorNormalMap,
     roughnessMap: floorRoughnessMap,
-    normalScale: new THREE.Vector2(0.18, 0.18),
-    color: 0xf8f3ea,
-    roughness: 0.84,
+    normalScale: new THREE.Vector2(0.11, 0.11),
+    color: 0xe6e8e9,
+    roughness: 0.56,
     metalness: 0,
-    clearcoat: 0.12,
-    clearcoatRoughness: 0.28,
-    envMapIntensity: 0.14,
-  })
-);
+    clearcoat: 0.32,
+    clearcoatRoughness: 0.22,
+    envMapIntensity: 0.2,
+  });
+floorMaterial.onBeforeCompile = (shader) => {
+  shader.vertexShader = `varying vec3 vFloorWorld;\n${shader.vertexShader}`
+    .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFloorWorld = (modelMatrix * vec4(position, 1.0)).xyz;');
+  shader.fragmentShader = `varying vec3 vFloorWorld;\n${shader.fragmentShader}`
+    .replace('#include <map_fragment>', `#include <map_fragment>
+      // Placas 120x80 cm, junta fina de 9 mm y antialias por derivadas.
+      vec2 tileUv = vec2(vFloorWorld.x / 1.2, vFloorWorld.z / 0.8);
+      vec2 edgeDistance = min(fract(tileUv), 1.0 - fract(tileUv));
+      float nearestJoint = min(edgeDistance.x, edgeDistance.y);
+      float jointAA = max(fwidth(nearestJoint) * 1.35, 0.0015);
+      float joint = 1.0 - smoothstep(0.009, 0.009 + jointAA, nearestJoint);
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.19, 0.205, 0.215), joint * 0.72);
+    `);
+};
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), floorMaterial);
 floor.rotation.x = -Math.PI / 2;
 floor.position.set(0, 0, 10);
 floor.receiveShadow = true;
@@ -518,7 +529,9 @@ LATE.sun = sun;
 
 // Fill residual neutro: evita RGB negro, pero no cambia con la tela ni crea
 // una segunda direccion. El sol exterior queda como unica luz expresiva.
-const ambient = new THREE.AmbientLight(0xc9d9f2, 0.15);
+// Relleno fijo, no reactivo: permite leer color y trama sin convertir la tela
+// en luz. La ventana sigue siendo la única fuente expresiva/direccional.
+const ambient = new THREE.AmbientLight(0xd7e2f2, 0.45);
 scene.add(ambient);
 buildWindow();
 
@@ -531,13 +544,13 @@ buildWindow();
 const PRODUCTS = [
   { name: 'Blackout', color: 'Blanco', tex: 'img/fabric/blackout-albedo.jpg', normal: 'img/fabric/blackout-nor.png',
     stiffness: 0.97, gravity: 7.4, friction: 0.962, influence: 0.5, dragCap: 0.052, roughness: 0.88,
-    opacity: 1, castShadow: true, shadowBlock: 1, tint: 0xffffff, sunFactor: 0, backlight: 0, bounceGain: 4, normalScale: 0.2, repeat: 1.6 },
+    opacity: 1, castShadow: true, shadowBlock: 1, tint: 0xffffff, sunFactor: 0, backlight: 0, normalScale: 0.2, repeat: 1.6 },
   { name: 'Gasa', color: 'Beige', tex: 'img/fabric/gasa.jpg', normal: 'img/fabric/gasa-nor.png',
     stiffness: 0.93, gravity: 6.2, friction: 0.968, influence: 0.58, dragCap: 0.07, roughness: 0.72,
-    opacity: 0.72, castShadow: true, shadowBlock: 0.14, tint: 0xfffbf5, sunFactor: 0.84, backlight: 0, bounceGain: 7, normalScale: 0.12, repeat: 1.8 },
+    opacity: 0.72, castShadow: true, shadowBlock: 0.14, tint: 0xfffbf5, sunFactor: 0.84, backlight: 0, normalScale: 0.12, repeat: 1.8 },
   { name: 'Tusor', color: 'Natural', tex: 'img/fabric/tusor-albedo.jpg', normal: 'img/fabric/tusor-nor.png',
     stiffness: 0.95, gravity: 6.8, friction: 0.965, influence: 0.54, dragCap: 0.06, roughness: 0.88,
-    opacity: 1, castShadow: true, shadowBlock: 0.72, tint: 0xfff8ed, sunFactor: 0.24, backlight: 0, bounceGain: 5, normalScale: 0.2, repeat: 1.7 },
+    opacity: 1, castShadow: true, shadowBlock: 0.72, tint: 0xfff8ed, sunFactor: 0.24, backlight: 0, normalScale: 0.2, repeat: 1.7 },
 ];
 
 const texLoader = new THREE.TextureLoader();
@@ -572,19 +585,8 @@ function makeCurtainMaterial(p) {
     side: THREE.DoubleSide,
   });
   material.userData.shadowBlock = p.shadowBlock;
-  material.userData.bounceGain = p.bounceGain || 1;
-  material.userData.roomBounce = { value: 0.25 };
-  material.onBeforeCompile = (shader) => {
-    shader.uniforms.uRoomBounce = material.userData.roomBounce;
-    shader.fragmentShader = `uniform float uRoomBounce;\n${shader.fragmentShader}`
-      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-        vec3 bounceDirection = normalize(vec3(-0.42, 0.34, 0.84));
-        float foldResponse = 0.22 + 0.78 * max(dot(normal, bounceDirection), 0.0);
-        // Retroiluminacion difusa de tela real: no es un blanco plano; el
-        // relieve y la orientacion del pliegue modulan cuanto cielo devuelve.
-        totalEmissiveRadiance += diffuseColor.rgb * uRoomBounce * (0.15 + 0.35 * foldResponse);
-      `);
-  };
+  // La tela nunca es una fuente emisiva. Recibe el sol/ambiente mediante el
+  // BRDF estándar y su transmisión sólo afecta sombra, haze y superficies.
   material.customProgramCacheKey = () => 'cloth-window-bounce-v1';
   material.forceSinglePass = p.opacity < 1;
   return material;
@@ -979,17 +981,14 @@ function applyLightMix() {
   // determinan fisicamente donde llega el sol y cuanto crece la huella.
   sun.intensity = SUN_BASE_INTENSITY;
   transmittedPoolMat.opacity = transmission * (1 - opening) * 0.07;
-  godrayPass.uniforms.strength.value = 0.004 + 0.052 * atmosphereEnergy;
+  // El radial blur 2D se mantiene fuera: al no conocer profundidad sumaba luz
+  // por encima de la tela. La bruma 3D sí queda ocluida por cada paño.
+  godrayPass.uniforms.strength.value = 0;
   shaftMat.uniforms.uIntensity.value = 0;
-  bloomPass.strength = 0.06 + 0.32 * atmosphereEnergy;
+  // La ventana mantiene luminancia y bloom constantes. Al abrirse sólo queda
+  // expuesta una superficie mayor; no se aumenta artificialmente su potencia.
+  bloomPass.strength = 0.24;
   wallBounceUniforms.level.value = 0.015 + 0.34 * Math.pow(sourceEnergy, 2);
-  for (const set of [activeSet, idleSet]) {
-    for (const mesh of set.meshes) {
-      if (mesh.material?.userData?.roomBounce) {
-        mesh.material.userData.roomBounce.value = (0.08 + 0.42 * Math.pow(sourceEnergy, 1.6)) * (mesh.material.userData.bounceGain || 1);
-      }
-    }
-  }
   LATE.hazeStrength = atmosphereEnergy;
   LATE.sourceEnergy = sourceEnergy;
 }

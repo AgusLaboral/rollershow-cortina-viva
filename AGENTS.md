@@ -56,7 +56,7 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
   detalladas). Telas: `img/tela-*.png` (gpt-image-1 + mirror-tiling en
   `scripts/generate-assets.mjs`) + normal maps derivados
   (`scripts/generate-normals.mjs`, Sobel sobre luminancia, no gastan API).
-  Paredes/piso: PBR reales CC0 en `img/env/` (plaster + porcelanato Tiles078).
+  Paredes/piso: PBR reales CC0 en `img/env/` (plaster + Porcelain001).
 - **Interacción**: hover SIN clic en desktop (mouseenter/mousemove), dedo en
   mobile (touchmove con preventDefault), acelerómetro (`deviceorientation`,
   permiso iOS pedido en el primer gesto táctil, sin botón dedicado). El
@@ -96,21 +96,24 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 
 ## Estado al 2026-07-16 (ronda r40)
 
-La escena usa porcelanato PBR claro (`porcelain_diff/nor/rough.jpg`, ambientCG
-Tiles078 CC0) con relieve, rugosidad y clearcoat bajo. La trama de pared también
-usa albedo y normal reales. Las telas Blackout y Tusor tienen albedos procesados
-para conservar fibra sin quemar blancos, normal maps de escala contenida y
-retroiluminación modulada por la orientación del pliegue. Gasa conserva la trama
+La escena usa porcelanato PBR blanco (`porcelain_diff/nor/rough.jpg`, ambientCG
+Porcelain001 CC0) con micro-relieve, roughness, clearcoat y juntas de placas
+120x80 cm calculadas en world-space. La trama de pared también usa albedo y
+normal reales. Las telas Blackout y Tusor tienen albedos procesados para
+conservar fibra sin quemar blancos y normal maps de escala contenida. Ninguna
+tela suma emisión ni controla bloom: sólo recibe iluminación BRDF. Gasa conserva la trama
 visible pero ya no reutiliza el albedo como máscara alfa, porque contra una pared
 oscura la convertía en una malla negra. Su sombra bloquea 14%, Tusor 72% y
 Blackout 100%.
 
-La iluminación responde a una curva exponencial calculada con el hueco físico
+La iluminación del ambiente responde a una curva exponencial calculada con el hueco físico
 entre paños. El movimiento real del puntero excita brevemente esa apertura y la
 energía atmosférica cae de manera orgánica después del gesto. En full/lite hay
 28/12 capas de bruma pequeñas, desalineadas y animadas dentro del recorrido
-ventana→piso; bloom y god-rays crecen con esa misma energía. El viejo plano
-triangular sigue con intensidad cero. QA de interacción real: abertura
+ventana→piso. La luminancia de la ventana y la intensidad de bloom son
+constantes: abrir sólo expone más área y aumenta la energía sobre los receptores.
+El radial blur 2D y el viejo plano triangular quedan con intensidad cero porque
+sumaban luz por encima de la tela. QA de interacción real: abertura
 9,7%→48,5%, energía/glow 0,024→1,0.
 
 ### Base causal heredada de r39
