@@ -49,8 +49,8 @@ const qualityTier = ['full', 'lite'].includes(forcedQuality)
   ? forcedQuality
   : ((memoryKnown && deviceMemory <= 4) || cpuCores <= 4 ? 'lite' : 'full');
 const QUALITY = qualityTier === 'full'
-  ? { dpr: isMobile ? 1.35 : 1.65, maxPixels: 3000000, shadow: 1024, occlusion: isMobile ? 192 : 288, rays: isMobile ? 36 : 52, smaa: !isMobile }
-  : { dpr: 1, maxPixels: 1400000, shadow: 512, occlusion: 144, rays: 24, smaa: false };
+  ? { dpr: isMobile ? 1.35 : 1.65, maxPixels: 3000000, shadow: 2048, occlusion: isMobile ? 192 : 288, rays: isMobile ? 36 : 52, smaa: !isMobile }
+  : { dpr: 1, maxPixels: 1400000, shadow: 1024, occlusion: 144, rays: 24, smaa: false };
 
 // ---------------------------------------------------------------------------
 // Renderer / cámara
