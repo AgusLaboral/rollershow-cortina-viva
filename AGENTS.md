@@ -93,7 +93,24 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-16 (ronda r45)
+## Estado al 2026-07-16 (ronda r46)
+
+El editor de medidas deja de aplicar una cota horizontal a ambos campos. Reusa
+el patron operativo de las landings actuales: flecha bidireccional horizontal
+para Ancho y vertical para Alto, ambas como iconos semanticos junto al label.
+Los steppers conservan 48 px, unidad inseparable, foco visible y CTA de 52 px;
+el modulo sigue siendo una sola banda integrada a la escena, sin cards. Tambien
+se corrigio el z-index de la capa animada del CTA que podia dejar un triangulo
+rojo fuera del boton.
+
+QA r46: Playwright recorrio 320, 393 y 1440 px, acciono ambos steppers y midio
+iconos, panel y CTA. Resultado: cero errores, cero overflow, valores 130/160 tras
+la interaccion y CTA de 52 px. Carrusel real Blackout->Gasa->Tusor se reviso en
+mobile y desktop; la corrida conjunta agoto el timeout al redimensionar desktop
+bajo WebGL por software, pero ya habia producido las capturas necesarias y la
+matriz corta completo las tres anchuras.
+
+### Estado r45 preservado
 
 La calidad mobile se decide en dos etapas sin cambiar producto, materiales ni
 transparencia. Al inicio, `saveData`, memoria cuando el navegador la expone y
