@@ -690,7 +690,10 @@ let anchoCm = ANCHO_DEF, altoCm = ALTO_DEF;
 
 let FULL_W = winW * 1.34;              // ancho total del par de paños
 const FLOOR_Y = 0.015;
-let CURTAIN_BOTTOM = Math.max(FLOOR_Y, winY - 0.06);
+// Terminación "float": el ruedo apenas se separa del piso. Evita que la
+// colisión lo comprima y lo haga doblarse hacia arriba como tela sobrante.
+const HEM_CLEARANCE = 0.045;
+let CURTAIN_BOTTOM = Math.max(FLOOR_Y + HEM_CLEARANCE, winY - 0.04);
 let W_M = FULL_W, H_M = ROD_Y + 0.035 - CURTAIN_BOTTOM;
 const PANEL_GAP = 0.18;                // apertura central en reposo (más juntos, pasa un haz)
 
@@ -1342,7 +1345,7 @@ function applySize() {
   FULL_W = winW * 1.34;
   OFF_DIST = winW * 0.75 + 0.6;
   W_M = FULL_W;
-  CURTAIN_BOTTOM = Math.max(FLOOR_Y, winY - 0.06);
+  CURTAIN_BOTTOM = Math.max(FLOOR_Y + HEM_CLEARANCE, winY - 0.04);
   H_M = ROD_Y + 0.035 - CURTAIN_BOTTOM;
   for (const sim of activeSet.sims) { sim.spread = 1; sim.offsetX = 0; sim.build(); }
   if (idleSet.visible) for (const sim of idleSet.sims) sim.build();

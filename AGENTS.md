@@ -93,7 +93,29 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-16 (ronda r43)
+## Estado al 2026-07-16 (ronda r44)
+
+La transparencia de r43 quedó aprobada explícitamente por Agus como resultado
+definitivo y motor reusable. No recalibrar `frostMix`, LOD, microtrama,
+`foldShade`, `sunFactor`, `shadowBlock`, caps de radiancia ni la máscara de haze
+sin un pedido nuevo. La receta evita alpha/transmission: material Standard
+opaco + captura reducida con mipmaps + cuatro muestras sesgadas + fibra macro y
+micro + longitud de recorrido, con luz y sombra gobernadas por separado.
+
+La interfaz r44 elimina las hojas poligonales y la caja exterior del cotizador.
+Anterior/Siguiente son controles editoriales transparentes sobre Penumbra
+localizada, con hairline y palabra. Medidas usan la firma de marca "Cota activa":
+línea continua con tics que se dibuja al revelar el módulo. El CTA mide 52 px,
+mantiene Rojo Teja sólido/radio 6 px y anima sólo entrada, hover y flecha; nunca
+late en loop. Mobile conserva una banda inferior Tinta por legibilidad.
+
+El ruedo usa terminación float: `HEM_CLEARANCE=0.045` y el largo visual termina
+4 cm por debajo del vano o 4,5 cm sobre el piso, lo que evita comprimir la malla
+contra la colisión y doblarla hacia arriba. QA r44 recorrió 320, 393 y 1440 px,
+carrusel real y puerta-ventana de 260 cm sin errores ni overflow; el CTA midió
+52 px y la banda no usa radio ni caja anidada.
+
+### Histórico r43 (reemplazado por r44)
 
 La interfaz media deliberadamente entre el manual RollerShow y la escena
 experimental: navegación tipo "consola óptica" con hojas traslúcidas oscuras,
