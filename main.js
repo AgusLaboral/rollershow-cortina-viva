@@ -340,6 +340,21 @@ scene.add(windowGroup);
 let glass = null;
 const LATE = {}; // refs que se crean más abajo (sun, glowPlane de oclusión...)
 
+function updateShadowFrustum() {
+  if (!LATE.sun) return;
+  // En ultrawide el piso visible excede el ancho escenografico inicial. Fuera
+  // del shadow map Three lo considera iluminado y aparece una cuña falsa.
+  const shadowBaseW = Math.max(10, winW * 2);
+  // La camara mira desde +X: al ensanchar el viewport, el extremo izquierdo
+  // de pantalla crece hacia el lado positivo del espacio de la luz. Extender
+  // solo ese lado evita desperdiciar la mitad de la resolucion del shadow map.
+  LATE.sun.shadow.camera.left = -shadowBaseW;
+  LATE.sun.shadow.camera.right = Math.max(shadowBaseW, camera.aspect * 9);
+  LATE.sun.shadow.camera.top = Math.max(6, winTop + 1.4);
+  LATE.sun.shadow.camera.bottom = -4;
+  LATE.sun.shadow.camera.updateProjectionMatrix();
+}
+
 function buildWindow() {
   for (const child of [...windowGroup.children]) {
     windowGroup.remove(child);
@@ -486,14 +501,7 @@ function buildWindow() {
   }
   if (LATE.sun) {
     LATE.sun.target.position.set(-winW * 0.2, 0.05, 1.6);
-    // Todo el piso visible debe quedar dentro del shadow map. Fuera del
-    // frustum Three considera la superficie iluminada y aparecen placas falsas.
-    const shadowHalfW = Math.max(10, winW * 2);
-    LATE.sun.shadow.camera.left = -shadowHalfW;
-    LATE.sun.shadow.camera.right = shadowHalfW;
-    LATE.sun.shadow.camera.top = Math.max(6, winTop + 1.4);
-    LATE.sun.shadow.camera.bottom = -4;
-    LATE.sun.shadow.camera.updateProjectionMatrix();
+    updateShadowFrustum();
   }
   if (LATE.glowPlane) {
     LATE.glowPlane.scale.set(winW + 0.08, winH + 0.08, 1);
@@ -705,6 +713,7 @@ const FLOOR_Y = 0.015;
 // Terminación "float": el ruedo apenas se separa del piso. Evita que la
 // colisión lo comprima y lo haga doblarse hacia arriba como tela sobrante.
 const HEM_CLEARANCE = 0.045;
+const HEM_BAND_M = 0.16;
 let CURTAIN_BOTTOM = Math.max(FLOOR_Y + HEM_CLEARANCE, winY - 0.04);
 let W_M = FULL_W, H_M = ROD_Y + 0.035 - CURTAIN_BOTTOM;
 const PANEL_GAP = 0.18;                // apertura central en reposo (más juntos, pasa un haz)
@@ -828,6 +837,17 @@ function createSim(side) {
       sim.points[i].y += dy;
       sim.points[i].py += dy;
     }
+    // El peso del dobladillo permite que el ruedo acompañe el movimiento como
+    // conjunto, pero no que cada vertice dibuje un diente independiente.
+    let hemAverageY = 0;
+    for (let x = 0; x <= COLS; x++) hemAverageY += sim.points[hemStart + x].y;
+    hemAverageY /= nx;
+    for (let x = 0; x <= COLS; x++) {
+      const p = sim.points[hemStart + x];
+      const dy = (hemAverageY - p.y) * 0.9;
+      p.y += dy;
+      p.py += dy;
+    }
     // CURTAIN_BOTTOM define el largo visual, no una superficie de choque.
     // La unica colision horizontal real es el piso.
     for (const p of sim.points) {
@@ -866,8 +886,10 @@ function uploadGeometry(geo, sim) {
       const edgeDistance = Math.min(p.u, 1 - p.u);
       const sewnCornerTaper = smoothstep(0, 0.14, edgeDistance);
       const cornerDepth = lerp(1, sewnCornerTaper, hemBlend);
+      const hemBandStart = 1 - Math.min(0.35, HEM_BAND_M / Math.max(H_M, HEM_BAND_M));
+      const hemDepth = 1 - smoothstep(hemBandStart, 1, p.v);
       const wave = Math.sin(p.u * Math.PI * 2 * PLEAT_COUNT)
-        * (baseDepth + dynamicDepth) * cornerDepth;
+        * (baseDepth + dynamicDepth) * cornerDepth * hemDepth;
       pos.setXYZ(i, p.x, p.y, wave);
       uv.setXY(i, p.u, 1 - p.v);
     }
@@ -1481,6 +1503,7 @@ function resize() {
   const r = canvas.getBoundingClientRect();
   camera.aspect = r.width / r.height;
   updateCameraBase();
+  updateShadowFrustum();
   const pixelCapDpr = Math.sqrt(QUALITY.maxPixels / Math.max(1, r.width * r.height));
   const renderDpr = Math.min(window.devicePixelRatio || 1, QUALITY.dpr, pixelCapDpr) * adaptiveRenderScale;
   renderer.setPixelRatio(renderDpr);
@@ -1622,8 +1645,10 @@ window.__cortina = {
         minZ = Math.min(minZ, a.getZ(i)); maxZ = Math.max(maxZ, a.getZ(i));
       }
       let hemMinY = Infinity, hemMaxY = -Infinity;
+      let hemMaxAbsZ = 0;
       for (let i = ROWS * nx; i < a.count; i++) {
         hemMinY = Math.min(hemMinY, a.getY(i)); hemMaxY = Math.max(hemMaxY, a.getY(i));
+        hemMaxAbsZ = Math.max(hemMaxAbsZ, Math.abs(a.getZ(i)));
       }
       let outerEdgeMinX = Infinity, outerEdgeMaxX = -Infinity;
       const edgeTopX = a.getX(0), edgeBottomX = a.getX(ROWS * nx);
@@ -1638,11 +1663,30 @@ window.__cortina = {
         Math.abs(a.getZ(hemStart + 1)),
         Math.abs(a.getZ(hemStart + COLS - 1)),
       );
+      const projectedHem = [];
+      for (let x = 0; x <= COLS; x++) {
+        const i = hemStart + x;
+        const point = new THREE.Vector3(a.getX(i), a.getY(i), a.getZ(i));
+        m.localToWorld(point).project(camera);
+        projectedHem.push([
+          (point.x * 0.5 + 0.5) * canvas.clientWidth,
+          (-point.y * 0.5 + 0.5) * canvas.clientHeight,
+        ]);
+      }
+      const [lineStartX, lineStartY] = projectedHem[0];
+      const [lineEndX, lineEndY] = projectedHem[projectedHem.length - 1];
+      const lineDx = lineEndX - lineStartX, lineDy = lineEndY - lineStartY;
+      const lineLength = Math.hypot(lineDx, lineDy) || 1;
+      let hemProjectedDeviationPx = 0;
+      for (const [x, y] of projectedHem) {
+        const distance = Math.abs(lineDy * x - lineDx * y + lineEndX * lineStartY - lineEndY * lineStartX) / lineLength;
+        hemProjectedDeviationPx = Math.max(hemProjectedDeviationPx, distance);
+      }
       return {
         visible: m.visible, opacity: m.material?.opacity ?? null,
-        minX, maxX, minY, maxY, minZ, maxZ, hemMinY, hemMaxY,
+        minX, maxX, minY, maxY, minZ, maxZ, hemMinY, hemMaxY, hemMaxAbsZ,
         outerEdgeMinX, outerEdgeMaxX, outerEdgeSpan: outerEdgeMaxX - outerEdgeMinX,
-        outerEdgeCurveMax, bottomCornerDepth,
+        outerEdgeCurveMax, bottomCornerDepth, hemProjectedDeviationPx,
       };
     }),
   }),

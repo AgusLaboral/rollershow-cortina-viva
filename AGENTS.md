@@ -93,7 +93,34 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-16 (ronda r50)
+## Estado al 2026-07-16 (ronda r51)
+
+El ruedo ya no conserva la onda Z del cuerpo hasta el ultimo vertice. Una banda
+fisica de dobladillo de 16 cm aplana gradualmente la profundidad en todo el
+ancho; la ultima fila termina en Z=0 y su peso nivela Y hacia el promedio del
+pano sin inmovilizar el movimiento conjunto. El hook QA mide ahora toda la Z
+del ruedo y su desviacion proyectada en pixeles, no solamente coordenadas XY o
+las dos esquinas.
+
+La fuga de luz ultrawide no era haze ni una fuente adicional: el piso visible
+salía del frustum lateral del shadow map y Three lo trataba como iluminado. Los
+limites se recalculan en cada resize y amplian solamente el lado que abre la
+camara segun `camera.aspect`, preservando mas resolucion de sombra. La intensidad
+correcta de la ventana, el bloom y la jerarquia optica quedan intactos.
+
+El CTA desktop pasa a 60 px, 15 px/700, ancho minimo 292 px y padding lateral de
+30 px. Usa `align-self:flex-end`, por lo que su borde inferior coincide con el
+hairline de ambos steppers. Mantiene Rojo Teja, radio 6, animacion acotada y
+ancho completo mobile, sin loop ni glow decorativo.
+
+QA r51: Playwright recorrio 1440x900, 1920x1080, 2048x1024, 2560x1080,
+393x852 y 320x700, full/lite, sin errores ni overflow. El ROI izquierdo quedo
+con cero pixeles de alta luminancia en 1920, 2048 y 2560; el charco central no
+cambio. CTA y steppers terminan exactamente en la misma coordenada. La matriz
+lite/full de Blackout/Gasa/Tusor a 150/200/260 cm dio `hemMaxAbsZ=0` y una
+desviacion proyectada maxima menor a 0,44 px, incluso despues de redimensionar.
+
+### Estado r50 preservado
 
 La jerarquia optica queda separada en tres niveles inequívocos: Blackout bloquea
 por completo, Tusor filtra en un nivel intermedio y Gasa transmite la mayor parte
