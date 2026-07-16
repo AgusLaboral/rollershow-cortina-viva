@@ -93,7 +93,28 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-16 (ronda r47)
+## Estado al 2026-07-16 (ronda r48)
+
+La luz exterior gana presencia sin cambiar la logica causal de la escena: el
+sol fisico sube de 13,5 a 18, el haz ocluido aumenta de 0,16 a 0,27 y el bloom
+constante de la ventana pasa de 0,24 a 0,36. La exposicion global permanece en
+1,18 para no aclarar las zonas fuera del haz. La mascara de tela, los caps de
+radiancia y todos los parametros del motor frost siguen intactos; Blackout no
+se vuelve emisivo ni deja pasar luz.
+
+Blackout queda levemente menos rigido en interaccion: baja su stiffness y la
+estabilizacion localizada de orillo/ruedo, y sube moderadamente la respuesta al
+gesto. Conserva mas estructura que Tusor y Gasa y mantiene la caida lateral
+prolija de r47.
+
+QA r48: Playwright recorrio Blackout arrastrado, Gasa y Tusor en mobile lite sin
+errores. La revision visual confirmo mas intensidad en ventana, charco de luz y
+halo de las telas translucidas, sin bloom sobre Blackout ni perdida de textura.
+La corrida desktop produjo las cuatro capturas de producto necesarias; el
+script largo agoto el timeout despues, durante el redimensionado/FPS bajo WebGL
+por software, no durante la verificacion visual.
+
+### Estado r47 preservado
 
 La caida lateral y el ruedo modelan ahora la estructura localizada de los
 orillos cosidos. Los constraints de bending son mas firmes solamente en las

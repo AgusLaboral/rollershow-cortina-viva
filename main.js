@@ -507,7 +507,7 @@ buildWindow();
 // ---------------------------------------------------------------------------
 // Luz: sol golden-hour desde afuera + spot de recorte + fill mínimo
 // ---------------------------------------------------------------------------
-const SUN_BASE_INTENSITY = 13.5;
+const SUN_BASE_INTENSITY = 18;
 const sun = new THREE.DirectionalLight(0xffdfb5, SUN_BASE_INTENSITY);
 sun.position.set(0.75, 3.0, backZ - 3.0);
 sun.target.position.set(-0.45, 0.0, 2.0);
@@ -539,7 +539,7 @@ buildWindow();
 // ---------------------------------------------------------------------------
 const PRODUCTS = [
   { name: 'Blackout', color: 'Blanco', tex: 'img/fabric/blackout-albedo.jpg', normal: 'img/fabric/blackout-nor.png',
-    stiffness: 0.982, gravity: 8.35, friction: 0.955, influence: 0.5, dragCap: 0.052, dragResponse: 0.4, edgeStraighten: 0.92, hemStraighten: 0.68, pleatDepth: 0.095, compressionDepth: 0.04, roughness: 0.92,
+    stiffness: 0.974, gravity: 8.35, friction: 0.958, influence: 0.5, dragCap: 0.056, dragResponse: 0.46, edgeStraighten: 0.86, hemStraighten: 0.62, pleatDepth: 0.095, compressionDepth: 0.04, roughness: 0.92,
     opacity: 1, frostMix: 0, frostLod: 0, weaveStrength: 0, foldShade: 0.34, backfaceCap: 0.18, castShadow: true, shadowBlock: 1, tint: 0xffffff, sunFactor: 0, backlight: 0, radianceCap: 0.34, normalScale: 0.14, repeat: 1.6 },
   { name: 'Gasa', color: 'Beige', tex: 'img/fabric/gasa.jpg', normal: 'img/fabric/gasa-nor.png',
     stiffness: 0.93, gravity: 6.2, friction: 0.968, influence: 0.58, dragCap: 0.07, dragResponse: 0.86, edgeStraighten: 0.65, hemStraighten: 0.46, pleatDepth: 0.075, compressionDepth: 0.08, roughness: 0.88,
@@ -1154,11 +1154,11 @@ function applyLightMix() {
   // por encima de la tela. La bruma 3D sí queda ocluida por cada paño.
   // Bruma alineada con la ventana y ocluida por la tela. Reemplaza las capas
   // aditivas que generaban luz falsa en la pared izquierda.
-  godrayPass.uniforms.strength.value = atmosphereEnergy * 0.16;
+  godrayPass.uniforms.strength.value = atmosphereEnergy * 0.27;
   shaftMat.uniforms.uIntensity.value = 0;
   // La ventana mantiene luminancia y bloom constantes. Al abrirse sólo queda
   // expuesta una superficie mayor; no se aumenta artificialmente su potencia.
-  bloomPass.strength = 0.24;
+  bloomPass.strength = 0.36;
   LATE.hazeStrength = atmosphereEnergy;
   LATE.sourceEnergy = sourceEnergy;
 }
