@@ -544,13 +544,13 @@ buildWindow();
 const PRODUCTS = [
   { name: 'Blackout', color: 'Blanco', tex: 'img/fabric/blackout-albedo.jpg', normal: 'img/fabric/blackout-nor.png',
     stiffness: 0.97, gravity: 7.4, friction: 0.962, influence: 0.5, dragCap: 0.052, roughness: 0.88,
-    opacity: 1, castShadow: true, shadowBlock: 1, tint: 0xffffff, sunFactor: 0, backlight: 0, normalScale: 0.2, repeat: 1.6 },
+    opacity: 1, castShadow: true, shadowBlock: 1, tint: 0xffffff, sunFactor: 0, backlight: 0, radianceCap: 0.52, normalScale: 0.2, repeat: 1.6 },
   { name: 'Gasa', color: 'Beige', tex: 'img/fabric/gasa.jpg', normal: 'img/fabric/gasa-nor.png',
     stiffness: 0.93, gravity: 6.2, friction: 0.968, influence: 0.58, dragCap: 0.07, roughness: 0.72,
-    opacity: 0.72, castShadow: true, shadowBlock: 0.14, tint: 0xfffbf5, sunFactor: 0.84, backlight: 0, normalScale: 0.12, repeat: 1.8 },
+    opacity: 0.72, castShadow: true, shadowBlock: 0.14, tint: 0xfffbf5, sunFactor: 0.84, backlight: 0, radianceCap: 0.7, normalScale: 0.12, repeat: 1.8 },
   { name: 'Tusor', color: 'Natural', tex: 'img/fabric/tusor-albedo.jpg', normal: 'img/fabric/tusor-nor.png',
     stiffness: 0.95, gravity: 6.8, friction: 0.965, influence: 0.54, dragCap: 0.06, roughness: 0.88,
-    opacity: 1, castShadow: true, shadowBlock: 0.72, tint: 0xfff8ed, sunFactor: 0.24, backlight: 0, normalScale: 0.2, repeat: 1.7 },
+    opacity: 1, castShadow: true, shadowBlock: 0.72, tint: 0xfff8ed, sunFactor: 0.24, backlight: 0, radianceCap: 0.58, normalScale: 0.2, repeat: 1.7 },
 ];
 
 const texLoader = new THREE.TextureLoader();
@@ -587,6 +587,17 @@ function makeCurtainMaterial(p) {
   material.userData.shadowBlock = p.shadowBlock;
   // La tela nunca es una fuente emisiva. Recibe el sol/ambiente mediante el
   // BRDF estándar y su transmisión sólo afecta sombra, haze y superficies.
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uClothRadianceCap = { value: p.radianceCap };
+    shader.fragmentShader = `uniform float uClothRadianceCap;\n${shader.fragmentShader}`
+      .replace('#include <opaque_fragment>', `
+        // Salvaguarda material: ningún pliegue textil puede convertirse en
+        // fuente de bloom ni alcanzar el blanco exterior de la ventana.
+        outgoingLight = min(outgoingLight, vec3(uClothRadianceCap));
+        #include <opaque_fragment>
+      `);
+  };
+  material.customProgramCacheKey = () => `cloth-cap-${p.radianceCap}`;
   material.customProgramCacheKey = () => 'cloth-window-bounce-v1';
   material.forceSinglePass = p.opacity < 1;
   return material;

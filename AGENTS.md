@@ -101,7 +101,8 @@ Porcelain001 CC0) con micro-relieve, roughness, clearcoat y juntas de placas
 120x80 cm calculadas en world-space. La trama de pared también usa albedo y
 normal reales. Las telas Blackout y Tusor tienen albedos procesados para
 conservar fibra sin quemar blancos y normal maps de escala contenida. Ninguna
-tela suma emisión ni controla bloom: sólo recibe iluminación BRDF. Gasa conserva la trama
+tela suma emisión ni controla bloom: sólo recibe iluminación BRDF y cada producto
+tiene un techo de radiancia por debajo del umbral de bloom. Gasa conserva la trama
 visible pero ya no reutiliza el albedo como máscara alfa, porque contra una pared
 oscura la convertía en una malla negra. Su sombra bloquea 14%, Tusor 72% y
 Blackout 100%.
