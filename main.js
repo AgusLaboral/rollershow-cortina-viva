@@ -38,6 +38,10 @@ const muteBtn = document.getElementById('muteBtn');
 const QUOTE_URL = 'https://www.rollershow.com.ar/cotizar/tradicionales';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
+const smoothstep = (a, b, value) => {
+  const t = clamp((value - a) / Math.max(0.0001, b - a), 0, 1);
+  return t * t * (3 - 2 * t);
+};
 const easeInOut = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 const isMobile = matchMedia('(max-width:640px)').matches;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -64,9 +68,10 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.18;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x090908);
+scene.background = new THREE.Color(0x06080c);
 
 const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 80);
+const surfaceLoader = new THREE.TextureLoader();
 
 // ---------------------------------------------------------------------------
 // Puerta-ventana protagonista en ambiente CLARO minimalista (referencia de
@@ -91,15 +96,45 @@ function windowFromCm(ancho, alto) {
 
 // Paredes amplias y neutras: superficie limpia que recibe luz
 const ROOM = { w: 80, h: 28 };
+const plasterColorMap = surfaceLoader.load('img/env/plaster_diff.jpg');
+const plasterNormalMap = surfaceLoader.load('img/env/plaster_nor.jpg');
+for (const texture of [plasterColorMap, plasterNormalMap]) {
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(16, 6);
+  texture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), qualityTier === 'full' ? 8 : 2);
+}
+plasterColorMap.colorSpace = THREE.SRGBColorSpace;
 const wallMat = new THREE.MeshPhysicalMaterial({
-  color: 0x4c4944,
-  roughness: 0.58,
+  map: plasterColorMap,
+  normalMap: plasterNormalMap,
+  normalScale: new THREE.Vector2(0.18, 0.18),
+  color: 0x62656b,
+  roughness: 0.86,
   metalness: 0,
-  clearcoat: 0.18,
-  clearcoatRoughness: 0.36,
+  clearcoat: 0.02,
+  clearcoatRoughness: 0.82,
   // El sol esta detras de la pared: DoubleSide tambien bloquea su shadow map.
   side: THREE.DoubleSide,
 });
+const wallBounceUniforms = {
+  level: { value: 0 },
+  center: { value: new THREE.Vector2(0, winY + winH * 0.5) },
+  size: { value: new THREE.Vector2(winW, winH) },
+};
+wallMat.onBeforeCompile = (shader) => {
+  shader.uniforms.uWallBounce = wallBounceUniforms.level;
+  shader.uniforms.uWindowCenter = wallBounceUniforms.center;
+  shader.uniforms.uWindowSize = wallBounceUniforms.size;
+  shader.vertexShader = `varying vec3 vBounceWorld;\n${shader.vertexShader}`
+    .replace('#include <begin_vertex>', '#include <begin_vertex>\nvBounceWorld = (modelMatrix * vec4(position, 1.0)).xyz;');
+  shader.fragmentShader = `varying vec3 vBounceWorld;\nuniform float uWallBounce;\nuniform vec2 uWindowCenter;\nuniform vec2 uWindowSize;\n${shader.fragmentShader}`
+    .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      vec2 bounceDelta = (vBounceWorld.xy - uWindowCenter) / max(uWindowSize, vec2(0.1));
+      float localBounce = exp(-dot(bounceDelta * vec2(0.72, 0.9), bounceDelta * vec2(0.72, 0.9)) * 1.7);
+      totalEmissiveRadiance += diffuseColor.rgb * vec3(1.0, 0.82, 0.65) * localBounce * uWallBounce * 1.35;
+    `);
+};
+wallMat.customProgramCacheKey = () => 'localized-window-bounce-v1';
 const backWall = new THREE.Mesh(new THREE.BufferGeometry(), wallMat);
 backWall.position.z = backZ;
 backWall.receiveShadow = true;
@@ -114,16 +149,16 @@ new RGBELoader().load('img/env/sunset.hdr', (hdr) => {
   scene.environmentRotation = new THREE.Euler(0, ENV_ROT, 0);
 });
 
-// Piso de madera PBR real. El color y el relieve provienen de mapas CC0:
-// nada de gris plano ni clearcoat alto que lo convierta en una placa metalica.
-const surfaceLoader = new THREE.TextureLoader();
-const floorColorMap = surfaceLoader.load('img/env/wood_diff.jpg');
-const floorNormalMap = surfaceLoader.load('img/env/wood_nor.jpg');
-for (const texture of [floorColorMap, floorNormalMap]) {
+// Porcelanato PBR claro: color, relieve y rugosidad provienen de mapas CC0.
+// Las juntas grandes dan escala; el clearcoat bajo conserva el reflejo cálido.
+const floorColorMap = surfaceLoader.load('img/env/porcelain_diff.jpg');
+const floorNormalMap = surfaceLoader.load('img/env/porcelain_nor.jpg');
+const floorRoughnessMap = surfaceLoader.load('img/env/porcelain_rough.jpg');
+for (const texture of [floorColorMap, floorNormalMap, floorRoughnessMap]) {
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   // La geometria mide 200 unidades: este repeat deja tablas de escala real
   // dentro del encuadre sin evidenciar el mosaico de la textura.
-  texture.repeat.set(40, 40);
+  texture.repeat.set(42, 42);
   texture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), qualityTier === 'full' ? 8 : 2);
 }
 floorColorMap.colorSpace = THREE.SRGBColorSpace;
@@ -132,13 +167,14 @@ const floor = new THREE.Mesh(
   new THREE.MeshPhysicalMaterial({
     map: floorColorMap,
     normalMap: floorNormalMap,
-    normalScale: new THREE.Vector2(0.38, 0.38),
-    color: 0xffffff,
-    roughness: 0.42,
+    roughnessMap: floorRoughnessMap,
+    normalScale: new THREE.Vector2(0.18, 0.18),
+    color: 0xf8f3ea,
+    roughness: 0.84,
     metalness: 0,
-    clearcoat: 0.06,
-    clearcoatRoughness: 0.62,
-    envMapIntensity: 0.06,
+    clearcoat: 0.12,
+    clearcoatRoughness: 0.28,
+    envMapIntensity: 0.14,
   })
 );
 floor.rotation.x = -Math.PI / 2;
@@ -251,7 +287,46 @@ function makeHazeTexture() {
 const hazeTexture = makeHazeTexture();
 const hazeGroup = new THREE.Group();
 scene.add(hazeGroup);
-const SUN_DIR = new THREE.Vector3(-1.5, -1.85, 7.2).normalize(); // exterior -> piso interior
+const SUN_DIR = new THREE.Vector3(-1.2, -3.0, 7.2).normalize(); // exterior -> piso interior
+
+function makeWindowCookieTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 256;
+  const context = canvas.getContext('2d');
+  const edgeX = context.createLinearGradient(0, 0, 256, 0);
+  edgeX.addColorStop(0, 'rgba(255,255,255,0)');
+  edgeX.addColorStop(0.08, 'rgba(255,255,255,0.92)');
+  edgeX.addColorStop(0.92, 'rgba(255,255,255,0.92)');
+  edgeX.addColorStop(1, 'rgba(255,255,255,0)');
+  context.fillStyle = edgeX;
+  context.fillRect(0, 0, 256, 256);
+  context.globalCompositeOperation = 'destination-in';
+  const edgeY = context.createLinearGradient(0, 0, 0, 256);
+  edgeY.addColorStop(0, 'rgba(255,255,255,0)');
+  edgeY.addColorStop(0.07, 'rgba(255,255,255,1)');
+  edgeY.addColorStop(0.93, 'rgba(255,255,255,1)');
+  edgeY.addColorStop(1, 'rgba(255,255,255,0)');
+  context.fillStyle = edgeY;
+  context.fillRect(0, 0, 256, 256);
+  context.globalCompositeOperation = 'destination-out';
+  context.fillStyle = 'rgba(0,0,0,0.78)';
+  context.fillRect(124, 0, 8, 256);
+  for (let row = 1; row < 4; row++) context.fillRect(0, row * 64 - 3, 256, 6);
+  context.globalCompositeOperation = 'source-over';
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+const transmittedPoolMat = new THREE.MeshBasicMaterial({
+  map: makeWindowCookieTexture(),
+  color: 0xffd9b0,
+  transparent: true,
+  opacity: 0,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+  toneMapped: true,
+});
 
 const windowGroup = new THREE.Group();
 scene.add(windowGroup);
@@ -335,9 +410,36 @@ function buildWindow() {
   const shaft = new THREE.Mesh(shaftGeo, shaftMat);
   windowGroup.add(shaft);
   LATE.shaft = shaft;
+  const projectToFloor = (x, y) => {
+    const travel = y / Math.max(0.001, -SUN_DIR.y);
+    return [x + SUN_DIR.x * travel, 0.004, backZ + 0.03 + SUN_DIR.z * travel];
+  };
+  const poolBL = projectToFloor(-winW / 2, winY);
+  const poolBR = projectToFloor(winW / 2, winY);
+  const poolTR = projectToFloor(winW / 2, winTop);
+  const poolTL = projectToFloor(-winW / 2, winTop);
+  if (!LATE.beamEndWorld) LATE.beamEndWorld = new THREE.Vector3();
+  LATE.beamEndWorld.set(
+    (poolTL[0] + poolTR[0]) * 0.5,
+    0.004,
+    (poolTL[2] + poolTR[2]) * 0.5
+  );
+  const poolGeo = new THREE.BufferGeometry();
+  poolGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+    ...poolBL, ...poolBR, ...poolTR, ...poolTL,
+  ]), 3));
+  poolGeo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([
+    0, 0, 1, 0, 1, 1, 0, 1,
+  ]), 2));
+  poolGeo.setIndex([0, 1, 2, 0, 2, 3]);
+  poolGeo.computeVertexNormals();
+  const transmittedPool = new THREE.Mesh(poolGeo, transmittedPoolMat);
+  transmittedPool.renderOrder = 2;
+  windowGroup.add(transmittedPool);
+  LATE.transmittedPool = transmittedPool;
   for (const sprite of [...hazeGroup.children]) sprite.material.dispose();
   hazeGroup.clear();
-  const hazeCount = qualityTier === 'full' ? 18 : 9;
+  const hazeCount = qualityTier === 'full' ? 28 : 12;
   const travelToFloor = (winY + winH * 0.55) / Math.max(0.001, -SUN_DIR.y);
   for (let i = 0; i < hazeCount; i++) {
     // Mas densidad cerca de la fuente: oculta el borde del volumen sin llenar
@@ -354,13 +456,23 @@ function buildWindow() {
       toneMapped: false,
     });
     const sprite = new THREE.Sprite(material);
-    const baseX = SUN_DIR.x * travel;
-    const baseY = winY + winH * 0.55 + SUN_DIR.y * travel;
-    const baseZ = backZ + 0.08 + SUN_DIR.z * travel;
+    // Capas angostas y levemente desalineadas: si cada sprite cubre todo el
+    // volumen, la suma se lee como una mancha plana en vez de aire suspendido.
+    const lateral = Math.sin(i * 2.17) * winW * (0.08 + p * 0.18);
+    const lift = Math.cos(i * 1.37) * winH * 0.045;
+    const depth = Math.sin(i * 0.91) * (0.035 + p * 0.11);
+    const baseX = SUN_DIR.x * travel + lateral;
+    const baseY = winY + winH * 0.55 + SUN_DIR.y * travel + lift;
+    const baseZ = backZ + 0.08 + SUN_DIR.z * travel + depth;
     sprite.position.set(baseX, baseY, baseZ);
-    sprite.scale.set(winW * (0.74 + p * 1.12), winH * (0.28 + p * 0.48), 1);
+    sprite.scale.set(winW * (0.34 + p * 0.58), winH * (0.14 + p * 0.27), 1);
     sprite.material.rotation = (i % 5) * 0.37;
-    sprite.userData = { baseX, baseY, phase: i * 1.73, p };
+    sprite.userData = {
+      baseX, baseY, baseZ, phase: i * 1.73, p,
+      density: 0.72 + 0.28 * Math.sin(i * 3.11),
+      baseScaleX: winW * (0.34 + p * 0.58),
+      baseScaleY: winH * (0.14 + p * 0.27),
+    };
     hazeGroup.add(sprite);
   }
   if (LATE.sun) {
@@ -379,6 +491,8 @@ function buildWindow() {
     LATE.glowPlane.position.set(0, winY + winH / 2, backZ - 0.02);
   }
   if (LATE.lightWorldPos) LATE.lightWorldPos.set(0, winY + winH / 2, backZ);
+  wallBounceUniforms.center.value.set(0, winY + winH * 0.5);
+  wallBounceUniforms.size.value.set(winW, winH);
 }
 windowFromCm(120, 150);
 buildWindow();
@@ -386,10 +500,10 @@ buildWindow();
 // ---------------------------------------------------------------------------
 // Luz: sol golden-hour desde afuera + spot de recorte + fill mínimo
 // ---------------------------------------------------------------------------
-const SUN_BASE_INTENSITY = 6.4;
-const sun = new THREE.DirectionalLight(0xffc27d, SUN_BASE_INTENSITY);
-sun.position.set(1.0, 1.9, backZ - 3.4);
-sun.target.position.set(-0.5, 0.05, 1.6);
+const SUN_BASE_INTENSITY = 13.5;
+const sun = new THREE.DirectionalLight(0xffdfb5, SUN_BASE_INTENSITY);
+sun.position.set(0.75, 3.0, backZ - 3.0);
+sun.target.position.set(-0.45, 0.0, 2.0);
 sun.castShadow = true;
 sun.shadow.mapSize.set(QUALITY.shadow, QUALITY.shadow);
 sun.shadow.camera.near = 0.5;
@@ -404,7 +518,7 @@ LATE.sun = sun;
 
 // Fill residual neutro: evita RGB negro, pero no cambia con la tela ni crea
 // una segunda direccion. El sol exterior queda como unica luz expresiva.
-const ambient = new THREE.AmbientLight(0xfff4e8, 0.025);
+const ambient = new THREE.AmbientLight(0xc9d9f2, 0.15);
 scene.add(ambient);
 buildWindow();
 
@@ -415,15 +529,15 @@ buildWindow();
 // paños se calcula aparte usando la geometría viva.
 // ---------------------------------------------------------------------------
 const PRODUCTS = [
-  { name: 'Blackout', color: 'Blanco', tex: 'img/fabric/blackout.jpg', normal: 'img/fabric/blackout-nor.png',
-    stiffness: 0.97, gravity: 7.4, friction: 0.962, influence: 0.34, dragCap: 0.028, roughness: 0.85,
-    opacity: 1, castShadow: true, shadowBlock: 1, tint: 0xf2f0eb, sunFactor: 0, backlight: 0.08, repeat: 1.6, colorMap: false },
+  { name: 'Blackout', color: 'Blanco', tex: 'img/fabric/blackout-albedo.jpg', normal: 'img/fabric/blackout-nor.png',
+    stiffness: 0.97, gravity: 7.4, friction: 0.962, influence: 0.5, dragCap: 0.052, roughness: 0.88,
+    opacity: 1, castShadow: true, shadowBlock: 1, tint: 0xffffff, sunFactor: 0, backlight: 0, bounceGain: 4, normalScale: 0.2, repeat: 1.6 },
   { name: 'Gasa', color: 'Beige', tex: 'img/fabric/gasa.jpg', normal: 'img/fabric/gasa-nor.png',
-    stiffness: 0.93, gravity: 6.2, friction: 0.968, influence: 0.42, dragCap: 0.04, roughness: 0.6,
-    opacity: 0.94, castShadow: true, shadowBlock: 0.34, tint: 0xe8d7bc, sunFactor: 0.62, backlight: 0.16, repeat: 1.8 },
-  { name: 'Tusor', color: 'Natural', tex: 'img/fabric/tusor.jpg', normal: 'img/fabric/tusor-nor.png',
-    stiffness: 0.95, gravity: 6.8, friction: 0.965, influence: 0.38, dragCap: 0.034, roughness: 0.8,
-    opacity: 0.99, castShadow: true, shadowBlock: 0.78, tint: 0xcbbba4, sunFactor: 0.2, backlight: 0.1, repeat: 1.7 },
+    stiffness: 0.93, gravity: 6.2, friction: 0.968, influence: 0.58, dragCap: 0.07, roughness: 0.72,
+    opacity: 0.72, castShadow: true, shadowBlock: 0.14, tint: 0xfffbf5, sunFactor: 0.84, backlight: 0, bounceGain: 7, normalScale: 0.12, repeat: 1.8 },
+  { name: 'Tusor', color: 'Natural', tex: 'img/fabric/tusor-albedo.jpg', normal: 'img/fabric/tusor-nor.png',
+    stiffness: 0.95, gravity: 6.8, friction: 0.965, influence: 0.54, dragCap: 0.06, roughness: 0.88,
+    opacity: 1, castShadow: true, shadowBlock: 0.72, tint: 0xfff8ed, sunFactor: 0.24, backlight: 0, bounceGain: 5, normalScale: 0.2, repeat: 1.7 },
 ];
 
 const texLoader = new THREE.TextureLoader();
@@ -440,13 +554,17 @@ function fabricTex(src, srgb, rep, repY) {
   return t;
 }
 function makeCurtainMaterial(p) {
+  const colorMap = fabricTex(p.tex, true, p.repeat * 0.55, p.repeat);
   const material = new THREE.MeshStandardMaterial({
-    map: p.colorMap === false ? null : fabricTex(p.tex, true, p.repeat * 0.55, p.repeat),
+    map: colorMap,
+    alphaMap: null,
+    alphaTest: 0,
+    alphaHash: false,
     normalMap: fabricTex(p.normal, false, p.repeat * 0.55, p.repeat),
-    normalScale: new THREE.Vector2(0.5, 0.5),
+    normalScale: new THREE.Vector2(p.normalScale || 0.2, p.normalScale || 0.2),
     color: p.tint,
-    emissive: p.tint,
-    emissiveIntensity: p.backlight,
+    emissive: 0x000000,
+    emissiveIntensity: 0,
     roughness: p.roughness,
     metalness: 0,
     transparent: true,
@@ -454,6 +572,21 @@ function makeCurtainMaterial(p) {
     side: THREE.DoubleSide,
   });
   material.userData.shadowBlock = p.shadowBlock;
+  material.userData.bounceGain = p.bounceGain || 1;
+  material.userData.roomBounce = { value: 0.25 };
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uRoomBounce = material.userData.roomBounce;
+    shader.fragmentShader = `uniform float uRoomBounce;\n${shader.fragmentShader}`
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        vec3 bounceDirection = normalize(vec3(-0.42, 0.34, 0.84));
+        float foldResponse = 0.22 + 0.78 * max(dot(normal, bounceDirection), 0.0);
+        // Retroiluminacion difusa de tela real: no es un blanco plano; el
+        // relieve y la orientacion del pliegue modulan cuanto cielo devuelve.
+        totalEmissiveRadiance += diffuseColor.rgb * uRoomBounce * (0.15 + 0.35 * foldResponse);
+      `);
+  };
+  material.customProgramCacheKey = () => 'cloth-window-bounce-v1';
+  material.forceSinglePass = p.opacity < 1;
   return material;
 }
 
@@ -494,8 +627,8 @@ function makeShadowMaterial(p) {
 // Cada paño cubre poco más de la mitad de la ventana y cuelga entreabierto:
 // la luz pasa por el medio. Ondulado marcado como estado de reposo.
 // ---------------------------------------------------------------------------
-const COLS = qualityTier === 'full' ? 11 : 8;   // por paño
-const ROWS = qualityTier === 'full' ? 26 : 18;
+const COLS = qualityTier === 'full' ? 24 : 14;   // por paño
+const ROWS = qualityTier === 'full' ? 40 : 24;
 const ITERATIONS = qualityTier === 'full' ? 4 : 3;
 const nx = COLS + 1;
 
@@ -701,7 +834,7 @@ function renderOcclusionPass() {
   renderer.clearDepth();
   occSwap.clear();
   scene.traverse((o) => {
-    if (!o.isMesh || o === glowPlane || o === glass || o === LATE.shaft) return;
+    if (!o.isMesh || o === glowPlane || o === glass || o === LATE.shaft || o === LATE.transmittedPool) return;
     occSwap.set(o, o.material);
     if (curtainMeshes.has(o)) {
       const occMat = occCurtainMats.get(o);
@@ -725,6 +858,7 @@ const GODRAY_FRAG = `
   uniform sampler2D tDiffuse;
   uniform sampler2D tOcclusion;
   uniform vec2 lightPos;
+  uniform vec2 beamEnd;
   uniform float exposure;
   uniform float decay;
   uniform float density;
@@ -747,10 +881,14 @@ const GODRAY_FRAG = `
     }
     vec4 base = texture2D(tDiffuse, vUv);
     float haze = .84 + .16 * sin(vUv.x * 8.7 + time * .11 + sin(vUv.y * 6.1 - time * .07));
-    vec3 col = base.rgb + tint * illumination * exposure * strength * haze;
-    // Halo solo alrededor del vano: suaviza la fuente sin lavar la tela.
-    float halo = pow(clamp(1.0 - distance(vUv, lightPos) / 0.48, 0.0, 1.0), 3.0);
-    col += tint * halo * (0.018 + 0.024 * strength);
+    vec2 beamDirection = normalize(beamEnd - lightPos);
+    vec2 beamRelative = vUv - lightPos;
+    float beamAlong = dot(beamRelative, beamDirection);
+    float beamAcross = abs(beamRelative.x * beamDirection.y - beamRelative.y * beamDirection.x);
+    float beamCone = smoothstep(-0.02, 0.08, beamAlong)
+      * (1.0 - smoothstep(0.1, 0.38, beamAcross / max(beamAlong, 0.08)))
+      * (1.0 - smoothstep(0.78, 1.16, beamAlong));
+    vec3 col = base.rgb + tint * illumination * exposure * strength * haze * beamCone;
     // Vineta asimetrica: protege los extremos del set y deja el producto limpio.
     vec2 lens = (vUv - vec2(0.52, 0.49)) * vec2(0.84, 1.08);
     float vignette = 1.0 - 0.20 * smoothstep(0.43, 0.78, length(lens));
@@ -763,13 +901,14 @@ const godrayPass = new ShaderPass({
     tDiffuse: { value: null },
     tOcclusion: { value: occlusionTarget.texture },
     lightPos: { value: new THREE.Vector2(0.5, 0.5) },
-    exposure: { value: 0.78 },
+    beamEnd: { value: new THREE.Vector2(0.5, 0.1) },
+    exposure: { value: 0.5 },
     decay: { value: 0.975 },
-    density: { value: 1.08 },
-    weight: { value: 0.68 },
+    density: { value: 0.62 },
+    weight: { value: 0.36 },
     strength: { value: 1.0 },
     time: { value: 0 },
-    tint: { value: new THREE.Vector3(1.0, 0.68, 0.32) },
+    tint: { value: new THREE.Vector3(1.0, 0.84, 0.66) },
   },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
   fragmentShader: GODRAY_FRAG,
@@ -785,9 +924,14 @@ composer.addPass(new OutputPass());
 const lightWorldPos = new THREE.Vector3(0, winY + winH / 2, backZ);
 LATE.lightWorldPos = lightWorldPos;
 const lightProjected = new THREE.Vector3();
+const beamEndProjected = new THREE.Vector3();
 function updateLightScreenPos() {
   lightProjected.copy(lightWorldPos).project(camera);
   godrayPass.uniforms.lightPos.value.set(lightProjected.x * 0.5 + 0.5, lightProjected.y * 0.5 + 0.5);
+  if (LATE.beamEndWorld) {
+    beamEndProjected.copy(LATE.beamEndWorld).project(camera);
+    godrayPass.uniforms.beamEnd.value.set(beamEndProjected.x * 0.5 + 0.5, beamEndProjected.y * 0.5 + 0.5);
+  }
 }
 
 const navLeftWorld = new THREE.Vector3();
@@ -816,6 +960,7 @@ function physicalOpening(set) {
   return clamp((gap / (ROWS + 1)) / Math.max(W_M, 0.001), 0, 0.7);
 }
 
+let interactionOpenEnergy = 0;
 function applyLightMix() {
   const t = lightMix.t;
   const transmission = lerp(lightMix.from.sunFactor, lightMix.to.sunFactor, t);
@@ -824,17 +969,29 @@ function applyLightMix() {
     : physicalOpening(activeSet);
   // La tela aporta transmisión; la separación física entre paños aporta luz
   // directa. Blackout tiene transmisión cero: nunca pasa luz por su superficie.
-  const sf = clamp(transmission + (1 - transmission) * opening * 1.15, 0, 1);
+  const normalizedOpening = smoothstep(0.065, 0.22, opening);
+  const directEnergy = Math.pow(Math.max(normalizedOpening, interactionOpenEnergy * 0.72), 1.7);
+  const sourceEnergy = 1 - (1 - transmission) * (1 - directEnergy);
   // Compresión suave de altas luces: la Gasa sigue siendo muy luminosa sin
   // quemar marco, textura y superficies cuando el paño se abre por completo.
-  const lightLevel = 1 - Math.exp(-sf * 1.45);
+  const atmosphereEnergy = (Math.exp(2.4 * sourceEnergy) - 1) / (Math.exp(2.4) - 1);
   // La intensidad exterior es constante. La pared y la sombra de la tela
   // determinan fisicamente donde llega el sol y cuanto crece la huella.
   sun.intensity = SUN_BASE_INTENSITY;
-  godrayPass.uniforms.strength.value = 0.04 + 0.62 * lightLevel;
+  transmittedPoolMat.opacity = transmission * (1 - opening) * 0.07;
+  godrayPass.uniforms.strength.value = 0.004 + 0.052 * atmosphereEnergy;
   shaftMat.uniforms.uIntensity.value = 0;
-  bloomPass.strength = 0.04 + 0.2 * lightLevel;
-  LATE.hazeStrength = lightLevel;
+  bloomPass.strength = 0.06 + 0.32 * atmosphereEnergy;
+  wallBounceUniforms.level.value = 0.015 + 0.34 * Math.pow(sourceEnergy, 2);
+  for (const set of [activeSet, idleSet]) {
+    for (const mesh of set.meshes) {
+      if (mesh.material?.userData?.roomBounce) {
+        mesh.material.userData.roomBounce.value = (0.08 + 0.42 * Math.pow(sourceEnergy, 1.6)) * (mesh.material.userData.bounceGain || 1);
+      }
+    }
+  }
+  LATE.hazeStrength = atmosphereEnergy;
+  LATE.sourceEnergy = sourceEnergy;
 }
 
 // ---------------------------------------------------------------------------
@@ -922,6 +1079,10 @@ const ptr = { active: false, x: 0, y: 0, px: 0, py: 0 };
 let tiltX = 0, motionEnabled = false;
 const TILT_STRENGTH = 1.6;
 
+function exciteAtmosphere(x, y, deltaX) {
+  interactionOpenEnergy = Math.max(interactionOpenEnergy, clamp(Math.abs(deltaX) * 14, 0, 1));
+}
+
 function pointerToWorld(clientX, clientY) {
   const r = canvas.getBoundingClientRect();
   ndc.x = ((clientX - r.left) / r.width) * 2 - 1;
@@ -938,7 +1099,10 @@ canvas.addEventListener('mouseenter', (e) => {
 });
 canvas.addEventListener('mousemove', (e) => {
   const w = pointerToWorld(e.clientX, e.clientY);
-  if (w) { ptr.px = ptr.x; ptr.py = ptr.y; ptr.x = w.x; ptr.y = w.y; ptr.active = true; }
+  if (w) {
+    exciteAtmosphere(w.x, w.y, w.x - ptr.x);
+    ptr.px = ptr.x; ptr.py = ptr.y; ptr.x = w.x; ptr.y = w.y; ptr.active = true;
+  }
   revealPanel();
 });
 canvas.addEventListener('mouseleave', () => { ptr.active = false; });
@@ -950,7 +1114,10 @@ canvas.addEventListener('touchstart', (e) => {
 canvas.addEventListener('touchmove', (e) => {
   e.preventDefault();
   const t = e.touches[0], w = pointerToWorld(t.clientX, t.clientY);
-  if (w) { ptr.px = ptr.x; ptr.py = ptr.y; ptr.x = w.x; ptr.y = w.y; ptr.active = true; }
+  if (w) {
+    exciteAtmosphere(w.x, w.y, w.x - ptr.x);
+    ptr.px = ptr.x; ptr.py = ptr.y; ptr.x = w.x; ptr.y = w.y; ptr.active = true;
+  }
 }, { passive: false });
 const endTouch = () => { ptr.active = false; };
 canvas.addEventListener('touchend', endTouch);
@@ -1129,6 +1296,7 @@ let last = performance.now();
 function loop(now) {
   const elapsed = Math.min((now - last) / 1000, 0.16);
   last = now;
+  interactionOpenEnergy += (0 - interactionOpenEnergy) * 0.035;
   const steps = Math.min(MAX_SUBSTEPS, Math.max(1, Math.round(elapsed / PHYS_DT)));
   let transitionDone = false;
   for (let s = 0; s < steps; s++) {
@@ -1148,11 +1316,15 @@ function loop(now) {
   godrayPass.uniforms.time.value = atmosphereTime;
   const hazeStrength = LATE.hazeStrength || 0;
   for (const sprite of hazeGroup.children) {
-    const { baseX, baseY, phase, p } = sprite.userData;
-    sprite.position.x = baseX + Math.sin(atmosphereTime * 0.11 + phase) * (0.025 + p * 0.045);
-    sprite.position.y = baseY + Math.cos(atmosphereTime * 0.09 + phase * 0.7) * 0.025;
+    const { baseX, baseY, baseZ, baseScaleX, baseScaleY, phase, p, density } = sprite.userData;
+    sprite.position.x = baseX + Math.sin(atmosphereTime * 0.15 + phase) * (0.035 + p * 0.075);
+    sprite.position.y = baseY + Math.cos(atmosphereTime * 0.11 + phase * 0.7) * (0.018 + p * 0.035);
+    sprite.position.z = baseZ + Math.sin(atmosphereTime * 0.09 + phase * 1.21) * (0.024 + p * 0.07);
+    const hazeBreath = 0.93 + 0.07 * Math.sin(atmosphereTime * 0.16 + phase * 0.63);
+    sprite.scale.set(baseScaleX * hazeBreath, baseScaleY / hazeBreath, 1);
     sprite.material.rotation += reducedMotion ? 0 : 0.00028 * (phase % 2 ? 1 : -1);
-    sprite.material.opacity = (0.008 + hazeStrength * 0.065) * (0.72 + 0.28 * Math.sin(atmosphereTime * 0.13 + phase));
+    sprite.material.opacity = (0.002 + hazeStrength * 0.11) * density
+      * (0.76 + 0.24 * Math.sin(atmosphereTime * 0.13 + phase));
   }
   if (transitionDone) finishTransition();
 
@@ -1177,6 +1349,7 @@ requestAnimationFrame(loop);
 window.__cortina = {
   getState: () => ({
     currentIndex, anchoCm, altoCm, switching, qualityTier, winW, winH, winY,
+    sourceEnergy: LATE.sourceEnergy || 0, hazeStrength: LATE.hazeStrength || 0, interactionOpenEnergy,
     opening: physicalOpening(activeSet),
     productName: PRODUCTS[currentIndex].name, productColor: PRODUCTS[currentIndex].color,
     panels: activeSet.meshes.map((m) => {
@@ -1192,7 +1365,10 @@ window.__cortina = {
   pokeScreen: (clientX, clientY, dClientX, dClientY) => {
     const w1 = pointerToWorld(clientX - dClientX, clientY - dClientY);
     const w2 = pointerToWorld(clientX, clientY);
-    if (w1 && w2) { ptr.active = true; ptr.px = w1.x; ptr.py = w1.y; ptr.x = w2.x; ptr.y = w2.y; }
+    if (w1 && w2) {
+      exciteAtmosphere(w2.x, w2.y, w2.x - w1.x);
+      ptr.active = true; ptr.px = w1.x; ptr.py = w1.y; ptr.x = w2.x; ptr.y = w2.y;
+    }
   },
   jumpToProduct: (next) => {
     if (next === currentIndex || next < 0 || next >= PRODUCTS.length) return;

@@ -45,7 +45,7 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
   y su efecto atmosférico en `sunFactor`; la transmisión física de la sombra
   vive en `shadowBlock` dentro del `customDepthMaterial`.
 - **Atmósfera**: la forma principal no es el viejo wedge geométrico. El haz
-  combina oclusión radial, bloom y 18/9 sprites de bruma suave
+  combina oclusión radial, bloom y 28/12 sprites de bruma suave
   animados (full/lite). El plano con fBm queda sin intensidad para evitar las
   diagonales rectas que Agus rechazó. No resolver con blur global: destruiría
   pliegues y textura.
@@ -56,7 +56,7 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
   detalladas). Telas: `img/tela-*.png` (gpt-image-1 + mirror-tiling en
   `scripts/generate-assets.mjs`) + normal maps derivados
   (`scripts/generate-normals.mjs`, Sobel sobre luminancia, no gastan API).
-  Paredes/piso: PBR reales de Poly Haven en `img/env/` (plaster + wood, CC0).
+  Paredes/piso: PBR reales CC0 en `img/env/` (plaster + porcelanato Tiles078).
 - **Interacción**: hover SIN clic en desktop (mouseenter/mousemove), dedo en
   mobile (touchmove con preventDefault), acelerómetro (`deviceorientation`,
   permiso iOS pedido en el primer gesto táctil, sin botón dedicado). El
@@ -94,19 +94,37 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-15 (ronda r39)
+## Estado al 2026-07-16 (ronda r40)
+
+La escena usa porcelanato PBR claro (`porcelain_diff/nor/rough.jpg`, ambientCG
+Tiles078 CC0) con relieve, rugosidad y clearcoat bajo. La trama de pared también
+usa albedo y normal reales. Las telas Blackout y Tusor tienen albedos procesados
+para conservar fibra sin quemar blancos, normal maps de escala contenida y
+retroiluminación modulada por la orientación del pliegue. Gasa conserva la trama
+visible pero ya no reutiliza el albedo como máscara alfa, porque contra una pared
+oscura la convertía en una malla negra. Su sombra bloquea 14%, Tusor 72% y
+Blackout 100%.
+
+La iluminación responde a una curva exponencial calculada con el hueco físico
+entre paños. El movimiento real del puntero excita brevemente esa apertura y la
+energía atmosférica cae de manera orgánica después del gesto. En full/lite hay
+28/12 capas de bruma pequeñas, desalineadas y animadas dentro del recorrido
+ventana→piso; bloom y god-rays crecen con esa misma energía. El viejo plano
+triangular sigue con intensidad cero. QA de interacción real: abertura
+9,7%→48,5%, energía/glow 0,024→1,0.
+
+### Base causal heredada de r39
 
 Hecho: ambiente negro, HDR residual casi nulo y una sola luz expresiva: el sol
 exterior que atraviesa el hueco real de la ventana. Se eliminaron el proyector,
 el spot interior, la RectAreaLight y el HemisphereLight que iluminaban el piso
 sin respetar pared ni cortina. La pared bloquea sombras por ambas caras y el
-frustum cubre todo el piso visible; fuera del haz la madera permanece oscura.
+frustum cubre todo el piso visible; fuera del haz el porcelanato permanece oscuro.
 Blackout tiene transmisión cero, Tusor intermedia y Gasa alta; la oclusión usa
 `shadowBlock`, separada de la opacidad visual. El barral queda detrás del
 ancho y del borde superior de la tela. La pared y el piso son de 80/200 unidades
-para que sus límites no entren en cámara. El piso usa los mapas PBR CC0
-`wood_diff.jpg` + `wood_nor.jpg`: madera cálida real, `metalness: 0`, rugosidad
-media y clearcoat mínimo. No volver a un color gris uniforme para representar el
+para que sus límites no entren en cámara. El piso usa los mapas PBR CC0 de
+porcelanato, `metalness: 0`, rugosidad alta y clearcoat bajo. No volver a un color gris uniforme para representar el
 piso ni validar una superficie como texturada si no usa mapas visibles. A 60-190
 cm funciona como ventana elevada; a partir de 200 cm como puerta-ventana al piso.
 
