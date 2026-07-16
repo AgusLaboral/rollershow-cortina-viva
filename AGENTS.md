@@ -93,7 +93,32 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-16 (ronda r46)
+## Estado al 2026-07-16 (ronda r47)
+
+La caida lateral y el ruedo modelan ahora la estructura localizada de los
+orillos cosidos. Los constraints de bending son mas firmes solamente en las
+dos columnas exteriores y en la fila inferior; un shape matching por producto
+devuelve esos bordes suavemente hacia su linea de reposo sin rigidizar el centro
+ni alterar la respuesta al arrastre. Blackout usa la terminacion mas estable;
+Tusor y Gasa conservan progresivamente mas flexibilidad.
+
+Se corrigio tambien el reparto del solver cuando uno de los vertices esta
+fijado: la correccion completa se aplica al punto libre, en vez de perder la
+mitad. La colision de piso deja de recortar vertices aislados en un unico plano
+y usa un limite gradual para la banda inferior, respetando los 4,5 cm de
+separacion del ruedo. Esto elimina tanto los picos triangulares al tocar el
+porcelanato como la curva lateral exagerada. No se modificaron materiales,
+transparencia, luz, haze ni el presupuesto de iteraciones full/lite.
+
+QA r47: Playwright recorrio Blackout, Gasa y Tusor a 150, 200 y 260 cm en tier
+lite sin errores. En Blackout el desvio lateral maximo quedo entre 2,2 y 5,5 mm;
+Gasa, deliberadamente mas flexible, quedo por debajo de 18,9 mm, y Tusor por
+debajo de 12,1 mm. A 200 y 260 cm los dos panos de los tres productos terminaron
+completos en y=0,06 m, 4,5 cm sobre el piso, sin vertices sueltos. Tambien se
+verifico Blackout full a 200 cm y una deformacion sintetica en mobile lite:
+recupero el ruedo uniforme y el orillo recto sin errores.
+
+### Estado r46 preservado
 
 El editor de medidas deja de aplicar una cota horizontal a ambos campos. Reusa
 el patron operativo de las landings actuales: flecha bidireccional horizontal

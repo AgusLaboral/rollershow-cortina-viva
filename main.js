@@ -539,13 +539,13 @@ buildWindow();
 // ---------------------------------------------------------------------------
 const PRODUCTS = [
   { name: 'Blackout', color: 'Blanco', tex: 'img/fabric/blackout-albedo.jpg', normal: 'img/fabric/blackout-nor.png',
-    stiffness: 0.982, gravity: 8.35, friction: 0.955, influence: 0.5, dragCap: 0.052, dragResponse: 0.4, pleatDepth: 0.095, compressionDepth: 0.04, roughness: 0.92,
+    stiffness: 0.982, gravity: 8.35, friction: 0.955, influence: 0.5, dragCap: 0.052, dragResponse: 0.4, edgeStraighten: 0.92, hemStraighten: 0.68, pleatDepth: 0.095, compressionDepth: 0.04, roughness: 0.92,
     opacity: 1, frostMix: 0, frostLod: 0, weaveStrength: 0, foldShade: 0.34, backfaceCap: 0.18, castShadow: true, shadowBlock: 1, tint: 0xffffff, sunFactor: 0, backlight: 0, radianceCap: 0.34, normalScale: 0.14, repeat: 1.6 },
   { name: 'Gasa', color: 'Beige', tex: 'img/fabric/gasa.jpg', normal: 'img/fabric/gasa-nor.png',
-    stiffness: 0.93, gravity: 6.2, friction: 0.968, influence: 0.58, dragCap: 0.07, dragResponse: 0.86, pleatDepth: 0.075, compressionDepth: 0.08, roughness: 0.88,
+    stiffness: 0.93, gravity: 6.2, friction: 0.968, influence: 0.58, dragCap: 0.07, dragResponse: 0.86, edgeStraighten: 0.65, hemStraighten: 0.46, pleatDepth: 0.075, compressionDepth: 0.08, roughness: 0.88,
     opacity: 1, frostMix: 0.74, frostLod: 4.1, weaveStrength: 0.64, foldShade: 0.14, backfaceCap: 1, castShadow: true, shadowBlock: 0.18, tint: 0xfffbf5, sunFactor: 0.84, backlight: 0, radianceCap: 0.62, normalScale: 0.17, repeat: 2.35 },
   { name: 'Tusor', color: 'Natural', tex: 'img/fabric/tusor-albedo.jpg', normal: 'img/fabric/tusor-nor.png',
-    stiffness: 0.955, gravity: 6.9, friction: 0.963, influence: 0.54, dragCap: 0.06, dragResponse: 0.64, pleatDepth: 0.09, compressionDepth: 0.065, roughness: 0.92,
+    stiffness: 0.955, gravity: 6.9, friction: 0.963, influence: 0.54, dragCap: 0.06, dragResponse: 0.64, edgeStraighten: 0.8, hemStraighten: 0.56, pleatDepth: 0.09, compressionDepth: 0.065, roughness: 0.92,
     opacity: 1, frostMix: 0.66, frostLod: 4, weaveStrength: 0.58, foldShade: 0.2, backfaceCap: 1, castShadow: true, shadowBlock: 0.38, tint: 0xfff8ed, sunFactor: 0.64, backlight: 0, radianceCap: 0.56, normalScale: 0.24, repeat: 2.05 },
 ];
 
@@ -751,8 +751,15 @@ function createSim(side) {
           const diag = Math.hypot(sim.restSpacingX[x], sy);
           sim.constraints.push({ a: i - COLS, b: i, len: diag, factor: 0.42 });
         }
-        if (x > 1) sim.constraints.push({ a: i - 2, b: i, len: sim.restSpacingX[x - 2] + sim.restSpacingX[x - 1], factor: 0.16 });
-        if (y > 1) sim.constraints.push({ a: i - 2 * (COLS + 1), b: i, len: sy * 2, factor: 0.12 });
+        if (x > 1) sim.constraints.push({
+          a: i - 2, b: i,
+          len: sim.restSpacingX[x - 2] + sim.restSpacingX[x - 1],
+          factor: y === ROWS ? 0.48 : 0.16,
+        });
+        if (y > 1) sim.constraints.push({
+          a: i - 2 * (COLS + 1), b: i, len: sy * 2,
+          factor: x === 0 || x === COLS ? 0.52 : 0.12,
+        });
       }
     }
   };
@@ -795,15 +802,37 @@ function createSim(side) {
         const dx = p2.x - p1.x, dy = p2.y - p1.y;
         const dist = Math.sqrt(dx * dx + dy * dy) || 0.0001;
         const diff = (c.len - dist) / dist * params.stiffness * (c.factor ?? 1);
-        const ox = dx * 0.5 * diff, oy = dy * 0.5 * diff;
-        if (!p1.pinned) { p1.x -= ox; p1.y -= oy; }
-        if (!p2.pinned) { p2.x += ox; p2.y += oy; }
+        const w1 = p1.pinned ? 0 : 1, w2 = p2.pinned ? 0 : 1;
+        const weight = w1 + w2 || 1;
+        const ox = dx * diff / weight, oy = dy * diff / weight;
+        if (w1) { p1.x -= ox * w1; p1.y -= oy * w1; }
+        if (w2) { p2.x += ox * w2; p2.y += oy * w2; }
       }
+    }
+    // Los dobladillos reales estabilizan orillos y ruedo. Este shape matching
+    // localizado elimina picos de vertices sub-restringidos sin rigidizar el
+    // centro de la tela ni cambiar su respuesta al arrastre.
+    for (const x of [0, COLS]) {
+      const topX = sim.points[x].x;
+      for (let y = 1; y <= ROWS; y++) {
+        const i = y * nx + x;
+        const dx = (topX - sim.points[i].x) * params.edgeStraighten;
+        sim.points[i].x += dx;
+        sim.points[i].px += dx;
+      }
+    }
+    const hemStart = ROWS * nx;
+    for (let x = 0; x <= COLS; x++) {
+      const i = hemStart + x;
+      const dy = (CURTAIN_BOTTOM - sim.points[i].y) * params.hemStraighten;
+      sim.points[i].y += dy;
+      sim.points[i].py += dy;
     }
     // CURTAIN_BOTTOM define el largo visual, no una superficie de choque.
     // La unica colision horizontal real es el piso.
     for (const p of sim.points) {
-      if (p.y < FLOOR_Y) { p.y = FLOOR_Y; p.py = FLOOR_Y; }
+      const floorLimit = FLOOR_Y + HEM_CLEARANCE + (1 - p.v) * H_M * 0.35;
+      if (p.y < floorLimit) { p.y = floorLimit; p.py = floorLimit; }
     }
   };
   sim.build();
@@ -1572,18 +1601,35 @@ window.__cortina = {
       requested: motionRequested, granted: motionGranted, tiltX, tiltGravity,
       baselineLateral: motionBaselineLateral, baselineGravity: motionBaselineGravity,
     },
-    winW, winH, winY,
+    winW, winH, winY, curtainBottom: CURTAIN_BOTTOM, floorY: FLOOR_Y,
     sourceEnergy: LATE.sourceEnergy || 0, hazeStrength: LATE.hazeStrength || 0, interactionOpenEnergy,
     opening: physicalOpening(activeSet),
     productName: PRODUCTS[currentIndex].name, productColor: PRODUCTS[currentIndex].color,
     panels: activeSet.meshes.map((m) => {
       const a = m.geometry.getAttribute('position');
-      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
       for (let i = 0; i < a.count; i++) {
         minX = Math.min(minX, a.getX(i)); maxX = Math.max(maxX, a.getX(i));
+        minY = Math.min(minY, a.getY(i)); maxY = Math.max(maxY, a.getY(i));
         minZ = Math.min(minZ, a.getZ(i)); maxZ = Math.max(maxZ, a.getZ(i));
       }
-      return { visible: m.visible, opacity: m.material?.opacity ?? null, minX, maxX, minZ, maxZ };
+      let hemMinY = Infinity, hemMaxY = -Infinity;
+      for (let i = ROWS * nx; i < a.count; i++) {
+        hemMinY = Math.min(hemMinY, a.getY(i)); hemMaxY = Math.max(hemMaxY, a.getY(i));
+      }
+      let outerEdgeMinX = Infinity, outerEdgeMaxX = -Infinity;
+      const edgeTopX = a.getX(0), edgeBottomX = a.getX(ROWS * nx);
+      let outerEdgeCurveMax = 0;
+      for (let y = 0; y <= ROWS; y++) {
+        const edgeX = a.getX(y * nx);
+        outerEdgeMinX = Math.min(outerEdgeMinX, edgeX); outerEdgeMaxX = Math.max(outerEdgeMaxX, edgeX);
+        outerEdgeCurveMax = Math.max(outerEdgeCurveMax, Math.abs(edgeX - lerp(edgeTopX, edgeBottomX, y / ROWS)));
+      }
+      return {
+        visible: m.visible, opacity: m.material?.opacity ?? null,
+        minX, maxX, minY, maxY, minZ, maxZ, hemMinY, hemMaxY,
+        outerEdgeMinX, outerEdgeMaxX, outerEdgeSpan: outerEdgeMaxX - outerEdgeMinX, outerEdgeCurveMax,
+      };
     }),
   }),
   pokeScreen: (clientX, clientY, dClientX, dClientY) => {
