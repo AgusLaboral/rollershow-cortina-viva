@@ -835,6 +835,10 @@ function createSet(product) {
     mesh.renderOrder = 3;
     mesh.position.z = backZ + 0.35;
     mesh.receiveShadow = true;
+    // La malla cambia de bounds durante el carrusel. Three conserva el primer
+    // bounding sphere (a veces calculado cuando el paño está fuera de cuadro),
+    // por lo que en mobile podía seguir descartándolo aun después de entrar.
+    mesh.frustumCulled = false;
     mesh.layers.enable(2);
     scene.add(mesh);
     set.meshes.push(mesh);

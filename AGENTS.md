@@ -114,6 +114,9 @@ errores de consola ni overflow; verificó carrusel real, arrastre y steppers. El
 recorrido full capturó Blackout normal/arrastrado, Gasa y Tusor. El script largo
 agotó el timeout al reconstruir doce veces la malla bajo WebGL por software,
 pero el redimensionado ya quedó cubierto en la matriz corta full/lite.
+Las cuatro mallas de paño tienen `frustumCulled=false`: sus bounds cambian al
+entrar desde fuera de cuadro y el bounding sphere inicial podía dejar el paño
+derecho descartado en mobile después de completar el carrusel.
 
 ### Histórico r42 (reemplazado por r43)
 
