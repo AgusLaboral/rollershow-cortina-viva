@@ -93,6 +93,9 @@ const surfaceLoader = new THREE.TextureLoader();
 // con grilla de vidrios — los parantes proyectan la sombra en grilla.
 // ---------------------------------------------------------------------------
 const backZ = -2.2;
+// La tela cuelga apenas delante del barral y del marco. Una separacion de
+// 35 cm dejaba que el sol se filtrara por debajo del ruedo como puntos falsos.
+const CURTAIN_Z = backZ + 0.18;
 // Las medidas conservan su proporción real, pero la escala escenográfica se
 // normaliza para que el producto siga siendo protagonista en el valor inicial.
 // Ventana, marco, barral, luz y cortina se reconstruyen juntos.
@@ -406,12 +409,12 @@ function buildWindow() {
   const rodLength = winW * 1.24;
   const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, rodLength, 24), rodMat);
   rod.rotation.z = Math.PI / 2;
-  rod.position.set(0, ROD_Y - 0.24, backZ + 0.18);
+  rod.position.set(0, ROD_Y - 0.24, backZ);
   rod.castShadow = true;
   windowGroup.add(rod);
   for (const x of [-rodLength * 0.5, rodLength * 0.5]) {
     const cap = new THREE.Mesh(new THREE.SphereGeometry(0.032, 16, 16), rodMat);
-    cap.position.set(x, ROD_Y - 0.24, backZ + 0.18);
+    cap.position.set(x, ROD_Y - 0.24, backZ);
     windowGroup.add(cap);
   }
   const p2f = (x, y, z) => { const t = y / -SUN_DIR.y; return [x + SUN_DIR.x * t, 0.001, z + SUN_DIR.z * t]; };
@@ -547,14 +550,14 @@ buildWindow();
 // ---------------------------------------------------------------------------
 const PRODUCTS = [
   { name: 'Blackout', color: 'Blanco', tex: 'img/fabric/blackout-albedo.jpg', normal: 'img/fabric/blackout-nor.png',
-    stiffness: 0.952, gravity: 7.8, friction: 0.971, influence: 0.66, dragCap: 0.068, dragResponse: 0.74, edgeStraighten: 0.5, hemStraighten: 0.36, pleatDepth: 0.095, compressionDepth: 0.052, roughness: 0.92,
-    opacity: 1, frostMix: 0, frostLod: 0, weaveStrength: 0, foldShade: 0.34, backfaceCap: 0.18, castShadow: true, shadowBlock: 1, tint: 0xffffff, sunFactor: 0, backlight: 0, radianceCap: 0.34, normalScale: 0.14, repeat: 1.6 },
+    stiffness: 0.952, gravity: 7.8, friction: 0.971, influence: 0.66, dragCap: 0.068, dragResponse: 0.74, edgeStraighten: 0.5, hemStraighten: 0.36, pleatDepth: 0.095, compressionDepth: 0.035, roughness: 0.92,
+    opacity: 1, frostMix: 0, frostLod: 0, weaveStrength: 0, foldShade: 0.34, hemShade: 0.38, backfaceCap: 0.18, castShadow: true, shadowBlock: 1, tint: 0xffffff, sunFactor: 0, backlight: 0, radianceCap: 0.34, normalScale: 0.14, repeat: 1.6 },
   { name: 'Gasa', color: 'Beige', tex: 'img/fabric/gasa.jpg', normal: 'img/fabric/gasa-nor.png',
     stiffness: 0.93, gravity: 6.2, friction: 0.968, influence: 0.58, dragCap: 0.07, dragResponse: 0.86, edgeStraighten: 0.65, hemStraighten: 0.46, pleatDepth: 0.075, compressionDepth: 0.08, roughness: 0.88,
-    opacity: 1, frostMix: 0.74, frostLod: 4.1, weaveStrength: 0.64, foldShade: 0.14, backfaceCap: 1, castShadow: true, shadowBlock: 0.18, tint: 0xfffbf5, sunFactor: 0.84, backlight: 0, radianceCap: 0.62, normalScale: 0.17, repeat: 2.35 },
+    opacity: 1, frostMix: 0.74, frostLod: 4.1, weaveStrength: 0.64, foldShade: 0.14, hemShade: 0.72, backfaceCap: 1, castShadow: true, shadowBlock: 0.18, tint: 0xfffbf5, sunFactor: 0.84, backlight: 0, radianceCap: 0.62, normalScale: 0.17, repeat: 2.35 },
   { name: 'Tusor', color: 'Natural', tex: 'img/fabric/tusor-albedo.jpg', normal: 'img/fabric/tusor-nor.png',
     stiffness: 0.955, gravity: 6.9, friction: 0.963, influence: 0.54, dragCap: 0.06, dragResponse: 0.64, edgeStraighten: 0.8, hemStraighten: 0.56, pleatDepth: 0.09, compressionDepth: 0.065, roughness: 0.92,
-    opacity: 1, frostMix: 0.5, frostLod: 4.2, weaveStrength: 0.68, foldShade: 0.26, backfaceCap: 0.72, castShadow: true, shadowBlock: 0.56, tint: 0xfff8ed, sunFactor: 0.46, backlight: 0, radianceCap: 0.48, normalScale: 0.24, repeat: 2.05 },
+    opacity: 1, frostMix: 0.5, frostLod: 4.2, weaveStrength: 0.68, foldShade: 0.26, hemShade: 0.58, backfaceCap: 0.72, castShadow: true, shadowBlock: 0.56, tint: 0xfff8ed, sunFactor: 0.46, backlight: 0, radianceCap: 0.48, normalScale: 0.24, repeat: 2.05 },
 ];
 
 // Captura de baja resolución para transmisión difusa. Gasa y Tusor no son
@@ -614,6 +617,7 @@ function makeCurtainMaterial(p) {
     shader.uniforms.uWeaveStrength = { value: p.weaveStrength };
     shader.uniforms.uBackfaceCap = { value: p.backfaceCap };
     shader.uniforms.uFoldShade = { value: p.foldShade };
+    shader.uniforms.uHemShade = { value: p.hemShade };
     shader.fragmentShader = `uniform float uClothRadianceCap;
       uniform sampler2D uClothBackdrop;
       uniform vec2 uClothViewport;
@@ -623,6 +627,7 @@ function makeCurtainMaterial(p) {
       uniform float uWeaveStrength;
       uniform float uBackfaceCap;
       uniform float uFoldShade;
+      uniform float uHemShade;
       float clothHash(vec2 p) {
         p = fract(p * vec2(123.34, 456.21));
         p += dot(p, p + 45.32);
@@ -651,6 +656,8 @@ function makeCurtainMaterial(p) {
         outgoingLight = mix(outgoingLight, wovenFrost, uFrostMix);
         float foldFacing = pow(abs(dot(normal, geometryViewDir)), 0.65);
         outgoingLight *= mix(1.0, mix(0.7, 1.0, foldFacing), uFoldShade);
+        float sewnHem = 1.0 - smoothstep(0.0, 0.065, vMapUv.y);
+        outgoingLight *= mix(1.0, uHemShade, sewnHem);
         if (!gl_FrontFacing) outgoingLight = min(outgoingLight, diffuseColor.rgb * uBackfaceCap);
         // Salvaguarda material: ningún pliegue textil puede convertirse en
         // fuente de bloom ni alcanzar el blanco exterior de la ventana.
@@ -658,7 +665,7 @@ function makeCurtainMaterial(p) {
         #include <opaque_fragment>
       `);
   };
-  material.customProgramCacheKey = () => `cloth-frost-mip-${p.frostMix}-${p.frostLod}-${p.weaveStrength}-${p.foldShade}-${p.radianceCap}-${p.backfaceCap}`;
+  material.customProgramCacheKey = () => `cloth-frost-mip-${p.frostMix}-${p.frostLod}-${p.weaveStrength}-${p.foldShade}-${p.hemShade}-${p.radianceCap}-${p.backfaceCap}`;
   return material;
 }
 
@@ -713,8 +720,9 @@ const FLOOR_Y = 0.015;
 // Terminación "float": el ruedo apenas se separa del piso. Evita que la
 // colisión lo comprima y lo haga doblarse hacia arriba como tela sobrante.
 const HEM_CLEARANCE = 0.045;
+const WINDOW_HEM_OVERLAP = 0.1;
 const HEM_BAND_M = 0.16;
-let CURTAIN_BOTTOM = Math.max(FLOOR_Y + HEM_CLEARANCE, winY - 0.04);
+let CURTAIN_BOTTOM = Math.max(FLOOR_Y + HEM_CLEARANCE, winY - WINDOW_HEM_OVERLAP);
 let W_M = FULL_W, H_M = ROD_Y + 0.035 - CURTAIN_BOTTOM;
 const PANEL_GAP = 0.18;                // apertura central en reposo (más juntos, pasa un haz)
 
@@ -951,7 +959,7 @@ function uploadGeometry(geo, sim) {
       const hemProfile = smoothstep(hemBandStart, 1, p.v);
       // El dobladillo sigue siendo tela plegada. La amplitud converge a un
       // pliegue estable; no colapsa a Z=0 ni abre un abanico de triangulos.
-      const hemDepth = lerp(1, 0.36, hemProfile);
+      const hemDepth = lerp(1, 0.18, hemProfile);
       const wave = Math.sin(p.u * Math.PI * 2 * PLEAT_COUNT)
         * (baseDepth + dynamicDepth) * cornerDepth * hemDepth;
       // Una costura continua de pocos milimetros reemplaza los vertices
@@ -976,7 +984,7 @@ function createSet(product) {
     const mesh = new THREE.Mesh(set.geos[i], makeCurtainMaterial(product));
     mesh.customDepthMaterial = makeShadowMaterial(product);
     mesh.renderOrder = 3;
-    mesh.position.z = backZ + 0.35;
+    mesh.position.z = CURTAIN_Z;
     mesh.receiveShadow = true;
     // La malla cambia de bounds durante el carrusel. Three conserva el primer
     // bounding sphere (a veces calculado cuando el paño está fuera de cuadro),
@@ -1208,8 +1216,8 @@ const navRightWorld = new THREE.Vector3();
 function updateNavScreenPosition() {
   const r = canvas.getBoundingClientRect();
   const y = CURTAIN_BOTTOM + H_M * 0.55;
-  navLeftWorld.set(-FULL_W * 0.61, y, backZ + 0.35).project(camera);
-  navRightWorld.set(FULL_W * 0.61, y, backZ + 0.35).project(camera);
+  navLeftWorld.set(-FULL_W * 0.61, y, CURTAIN_Z).project(camera);
+  navRightWorld.set(FULL_W * 0.61, y, CURTAIN_Z).project(camera);
   const place = (button, point) => {
     const edge = r.width <= 640 ? 58 : 66;
     const x = clamp((point.x * 0.5 + 0.5) * r.width, edge, r.width - edge);
@@ -1340,7 +1348,7 @@ muteBtn.addEventListener('click', () => {
 // Puntero (hover sin clic / dedo) + acelerómetro
 // ---------------------------------------------------------------------------
 const raycaster = new THREE.Raycaster();
-const curtainPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -(backZ + 0.3));
+const curtainPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -CURTAIN_Z);
 const ndc = new THREE.Vector2();
 const hitPoint = new THREE.Vector3();
 const ptr = { active: false, x: 0, y: 0, px: 0, py: 0 };
@@ -1519,7 +1527,7 @@ function applySize() {
   FULL_W = winW * 1.34;
   OFF_DIST = winW * 0.75 + 0.6;
   W_M = FULL_W;
-  CURTAIN_BOTTOM = Math.max(FLOOR_Y + HEM_CLEARANCE, winY - 0.04);
+  CURTAIN_BOTTOM = Math.max(FLOOR_Y + HEM_CLEARANCE, winY - WINDOW_HEM_OVERLAP);
   H_M = ROD_Y + 0.035 - CURTAIN_BOTTOM;
   for (const sim of activeSet.sims) { sim.spread = 1; sim.offsetX = 0; sim.build(); }
   if (idleSet.visible) for (const sim of idleSet.sims) sim.build();

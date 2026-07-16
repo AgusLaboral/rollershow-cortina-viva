@@ -103,6 +103,13 @@ ondulacion de 2,5 mm; ya no colapsa toda la Z a cero ni genera dientes, abanicos
 triangulares o tela doblada hacia arriba. El largo configurado es ahora un
 limite fisico: ninguna parte del pano termina por debajo del ruedo.
 
+En ventanas elevadas el pano solapa 10 cm por debajo del vano; en puerta-ventana
+mantiene 4,5 cm de separacion del piso. La tela cuelga 18 cm delante del muro y
+el barral queda retrasado al plano del marco, siempre detras de todos los
+pliegues. El dobladillo se sombrea como doble capa. Esta geometria elimina los
+puntos de sol que se filtraban por debajo y evita que el barral reaparezca al
+reducir la distancia a la pared.
+
 Blackout conserva gravedad y masa mayores, pero deja de sentirse inmovil. Baja
 su rigidez localizada, amplifica el area y la respuesta del gesto y conserva
 mas inercia, sin tocar opacidad, sombra, radiancia ni el motor frost aprobado.
