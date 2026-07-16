@@ -93,7 +93,22 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-16 (ronda r49)
+## Estado al 2026-07-16 (ronda r50)
+
+La jerarquia optica queda separada en tres niveles inequívocos: Blackout bloquea
+por completo, Tusor filtra en un nivel intermedio y Gasa transmite la mayor parte
+de la luz. Tusor reduce su mezcla de fondo frost de 0,66 a 0,50 y su `sunFactor`
+de 0,64 a 0,46; aumenta bloqueo de sombra de 0,38 a 0,56 y densidad de fibra,
+oscurece mas los pliegues y limita su radiancia. Gasa permanece en 0,84 de
+transmision y 0,18 de bloqueo; Blackout sigue en 0 y 1 respectivamente.
+
+QA r50: Playwright verifico mobile lite y desktop full, sin errores, con igual
+apertura y exposicion. La energia de fuente medida fue 0,010 para Blackout,
+0,466 para Tusor y 0,842 para Gasa; el haze resultante fue 0,002, 0,206 y 0,653.
+La comparacion visual confirma que Tusor conserva textura y translucidez real,
+pero ya no se confunde con la luminosidad de Gasa.
+
+### Estado r49 preservado
 
 Se elimino la pestana rectangular que podia aparecer en la union inferior entre
 orillo y ruedo. La causa no estaba en Verlet ni en la colision XY: despues de

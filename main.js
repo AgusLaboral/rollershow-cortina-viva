@@ -546,7 +546,7 @@ const PRODUCTS = [
     opacity: 1, frostMix: 0.74, frostLod: 4.1, weaveStrength: 0.64, foldShade: 0.14, backfaceCap: 1, castShadow: true, shadowBlock: 0.18, tint: 0xfffbf5, sunFactor: 0.84, backlight: 0, radianceCap: 0.62, normalScale: 0.17, repeat: 2.35 },
   { name: 'Tusor', color: 'Natural', tex: 'img/fabric/tusor-albedo.jpg', normal: 'img/fabric/tusor-nor.png',
     stiffness: 0.955, gravity: 6.9, friction: 0.963, influence: 0.54, dragCap: 0.06, dragResponse: 0.64, edgeStraighten: 0.8, hemStraighten: 0.56, pleatDepth: 0.09, compressionDepth: 0.065, roughness: 0.92,
-    opacity: 1, frostMix: 0.66, frostLod: 4, weaveStrength: 0.58, foldShade: 0.2, backfaceCap: 1, castShadow: true, shadowBlock: 0.38, tint: 0xfff8ed, sunFactor: 0.64, backlight: 0, radianceCap: 0.56, normalScale: 0.24, repeat: 2.05 },
+    opacity: 1, frostMix: 0.5, frostLod: 4.2, weaveStrength: 0.68, foldShade: 0.26, backfaceCap: 0.72, castShadow: true, shadowBlock: 0.56, tint: 0xfff8ed, sunFactor: 0.46, backlight: 0, radianceCap: 0.48, normalScale: 0.24, repeat: 2.05 },
 ];
 
 // Captura de baja resolución para transmisión difusa. Gasa y Tusor no son
