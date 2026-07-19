@@ -112,8 +112,8 @@ function windowFromCm(ancho, alto) {
 
 // Paredes amplias y neutras: superficie limpia que recibe luz
 const ROOM = { w: 80, h: 28 };
-const plasterColorMap = surfaceLoader.load('img/env/plaster_diff.jpg');
-const plasterNormalMap = surfaceLoader.load('img/env/plaster_nor.jpg');
+const plasterColorMap = surfaceLoader.load('img/env/plaster_diff.webp');
+const plasterNormalMap = surfaceLoader.load('img/env/plaster_nor.webp');
 for (const texture of [plasterColorMap, plasterNormalMap]) {
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(16, 6);
@@ -139,18 +139,20 @@ backWall.castShadow = true;
 scene.add(backWall);
 
 const ENV_ROT = 2.196; // sol del HDRI centrado en la ventana (calculado del archivo)
-new RGBELoader().load('img/env/sunset.hdr', (hdr) => {
-  hdr.mapping = THREE.EquirectangularReflectionMapping;
-  scene.environment = hdr;
-  scene.environmentIntensity = 0.015;
-  scene.environmentRotation = new THREE.Euler(0, ENV_ROT, 0);
-});
+function loadEnvironment() {
+  new RGBELoader().load('img/env/sunset.hdr', (hdr) => {
+    hdr.mapping = THREE.EquirectangularReflectionMapping;
+    scene.environment = hdr;
+    scene.environmentIntensity = 0.015;
+    scene.environmentRotation = new THREE.Euler(0, ENV_ROT, 0);
+  });
+}
 
 // Porcelanato marmolado claro: Marble005 CC0 aporta veta, normal y roughness;
 // las juntas arquitectónicas viven en world-space para conservar escala real.
-const floorColorMap = surfaceLoader.load('img/env/marble_diff.jpg');
-const floorNormalMap = surfaceLoader.load('img/env/marble_nor.jpg');
-const floorRoughnessMap = surfaceLoader.load('img/env/marble_rough.jpg');
+const floorColorMap = surfaceLoader.load('img/env/marble_diff.webp');
+const floorNormalMap = surfaceLoader.load('img/env/marble_nor.webp');
+const floorRoughnessMap = surfaceLoader.load('img/env/marble_rough.webp');
 for (const texture of [floorColorMap, floorNormalMap, floorRoughnessMap]) {
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   // El mapa representa una placa grande, no un micropatrón repetido.
@@ -549,13 +551,13 @@ buildWindow();
 // paños se calcula aparte usando la geometría viva.
 // ---------------------------------------------------------------------------
 const PRODUCTS = [
-  { name: 'Blackout', color: 'Blanco', tex: 'img/fabric/blackout-albedo.jpg', normal: 'img/fabric/blackout-nor.png',
+  { name: 'Blackout', color: 'Blanco', tex: 'img/fabric/blackout-albedo.jpg', normal: 'img/fabric/blackout-nor.webp',
     stiffness: 0.91, gravity: 7.8, friction: 0.977, influence: 0.7, dragCap: 0.075, dragResponse: 0.82, pleatDepth: 0.095, compressionDepth: 0.035, roughness: 0.92,
     opacity: 1, frostMix: 0, frostLod: 0, weaveStrength: 0, foldShade: 0.34, backfaceCap: 0.18, castShadow: true, shadowBlock: 1, tint: 0xffffff, sunFactor: 0, backlight: 0, radianceCap: 0.34, normalScale: 0.14, repeat: 1.6 },
-  { name: 'Gasa', color: 'Beige', tex: 'img/fabric/gasa.jpg', normal: 'img/fabric/gasa-nor.png',
+  { name: 'Gasa', color: 'Beige', tex: 'img/fabric/gasa.jpg', normal: 'img/fabric/gasa-nor.webp',
     stiffness: 0.87, gravity: 6.2, friction: 0.972, influence: 0.6, dragCap: 0.075, dragResponse: 0.9, pleatDepth: 0.075, compressionDepth: 0.08, roughness: 0.88,
     opacity: 1, frostMix: 0.74, frostLod: 4.1, weaveStrength: 0.64, foldShade: 0.14, backfaceCap: 1, castShadow: true, shadowBlock: 0.18, tint: 0xfffbf5, sunFactor: 0.84, backlight: 0, radianceCap: 0.62, normalScale: 0.17, repeat: 2.35 },
-  { name: 'Tusor', color: 'Natural', tex: 'img/fabric/tusor-albedo.jpg', normal: 'img/fabric/tusor-nor.png',
+  { name: 'Tusor', color: 'Natural', tex: 'img/fabric/tusor-albedo.jpg', normal: 'img/fabric/tusor-nor.webp',
     stiffness: 0.9, gravity: 6.9, friction: 0.975, influence: 0.56, dragCap: 0.066, dragResponse: 0.72, pleatDepth: 0.09, compressionDepth: 0.065, roughness: 0.92,
     opacity: 1, frostMix: 0.5, frostLod: 4.2, weaveStrength: 0.68, foldShade: 0.26, backfaceCap: 0.72, castShadow: true, shadowBlock: 0.56, tint: 0xfff8ed, sunFactor: 0.46, backlight: 0, radianceCap: 0.48, normalScale: 0.24, repeat: 2.05 },
 ];
@@ -575,10 +577,14 @@ const clothTexel = new THREE.Vector2(1 / 512, 1 / 288);
 
 const texLoader = new THREE.TextureLoader();
 const fabricTextureCache = new Map();
+const criticalCurtainLoads = [];
 function fabricTex(src, srgb, rep, repY) {
   const key = `${src}|${srgb}|${rep}|${repY ?? rep}`;
   if (fabricTextureCache.has(key)) return fabricTextureCache.get(key);
-  const t = texLoader.load(src);
+  let resolveLoad;
+  const loaded = new Promise((resolve) => { resolveLoad = resolve; });
+  const t = texLoader.load(src, resolveLoad, undefined, resolveLoad);
+  if (src.includes('/blackout-')) criticalCurtainLoads.push(loaded);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.repeat.set(rep, repY ?? rep);
   t.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), qualityTier === 'full' ? 8 : 2);
@@ -715,7 +721,7 @@ let FULL_W = winW * 1.34;              // ancho total del par de paños
 const FLOOR_Y = 0.015;
 // Terminación "float": el ruedo apenas se separa del piso. Evita que la
 // colisión lo comprima y lo haga doblarse hacia arriba como tela sobrante.
-const HEM_CLEARANCE = 0.045;
+const HEM_CLEARANCE = 0.006;
 const WINDOW_HEM_OVERLAP = 0.1;
 let CURTAIN_BOTTOM = Math.max(FLOOR_Y + HEM_CLEARANCE, winY - WINDOW_HEM_OVERLAP);
 let W_M = FULL_W, H_M = ROD_Y + 0.035 - CURTAIN_BOTTOM;
@@ -727,7 +733,7 @@ const gatheredU = (u) => u + (PLEAT_AMPLITUDE / (PLEAT_COUNT * Math.PI * 2)) * M
 
 // side: -1 = paño izquierdo (cuelga desde el borde izquierdo hacia el centro)
 function createSim(side) {
-  const sim = { side, points: [], constraints: [], restSpacingX: [], spread: 1, offsetX: 0, kinematic: null };
+  const sim = { side, points: [], constraints: [], tethers: [], restSpacingX: [], spread: 1, offsetX: 0, kinematic: null };
   // reposo del paño: desde el borde exterior hasta cerca del centro (gap)
   sim.panelRange = () => {
     const half = W_M / 2;
@@ -742,7 +748,7 @@ function createSim(side) {
     return sim.offsetX + outer + (baseX - outer) * sim.spread;
   };
   sim.build = () => {
-    sim.points = []; sim.constraints = []; sim.restSpacingX = [];
+    sim.points = []; sim.constraints = []; sim.tethers = []; sim.restSpacingX = [];
     const { outer, inner } = sim.panelRange();
     const sy = H_M / ROWS;
     const colX = [];
@@ -753,6 +759,7 @@ function createSim(side) {
         const px = sim.anchorX(colX[x]), py = ROD_Y + 0.035 - y * sy;
         sim.points.push({ x: px, y: py, px, py, baseX: colX[x], pinned: y === 0, u: x / COLS, v: y / ROWS });
         const i = sim.points.length - 1;
+        if (y > 0) sim.tethers.push({ anchor: x, point: i, maxLen: y * sy });
         if (x > 0) sim.constraints.push({ a: i - 1, b: i, len: sim.restSpacingX[x - 1] });
         if (y > 0) sim.constraints.push({ a: i - (COLS + 1), b: i, len: sy });
         if (x > 0 && y > 0) {
@@ -820,13 +827,18 @@ function createSim(side) {
         if (w1) { p1.x -= ox * w1; p1.y -= oy * w1; }
         if (w2) { p2.x += ox * w2; p2.y += oy * w2; }
       }
+      // La urdimbre no se alarga hacia el piso. El límite es sólo vertical:
+      // conserva el largo real sin restringir el desplazamiento lateral.
+      for (const tether of sim.tethers) {
+        const anchor = sim.points[tether.anchor], p = sim.points[tether.point];
+        const minY = anchor.y - tether.maxLen;
+        if (p.y >= minY) continue;
+        p.py += minY - p.y;
+        p.y = minY;
+      }
     }
-    // Sólo la fila superior está fijada. Laterales, cuerpo y pie conservan la
-    // respuesta física de la malla; no hay shape matching ni banda inferior.
-    for (const p of sim.points) {
-      const floorLimit = FLOOR_Y + 0.008;
-      if (p.y < floorLimit) { p.y = floorLimit; p.py = floorLimit; }
-    }
+    // No hay colisión con el piso: el largo inextensible termina antes y evita
+    // por construcción el recorte que doblaba vértices hacia arriba.
   };
   sim.build();
   return sim;
@@ -899,7 +911,9 @@ function createSet(product) {
 }
 
 const setA = createSet(PRODUCTS[0]);
-const setB = createSet(PRODUCTS[1]);
+// El segundo set reutiliza Blackout durante el arranque. Gasa y Tusor se
+// precargan después del primer cuadro para no competir con el producto visible.
+const setB = createSet(PRODUCTS[0]);
 setB.setVisible(false);
 setA.setCastShadow(PRODUCTS[0].castShadow);
 
@@ -1527,6 +1541,8 @@ function probePerformance(elapsed) {
     probeSeconds = 0;
   }
 }
+let resolveFirstFrame;
+const firstFrameRendered = new Promise((resolve) => { resolveFirstFrame = resolve; });
 function loop(now) {
   const elapsed = Math.min((now - last) / 1000, 0.16);
   last = now;
@@ -1582,13 +1598,37 @@ function loop(now) {
   const dynamicShadow = ptr.active || switching || Math.abs(tiltX) > 0.03 || Math.abs(tiltGravity) > 0.01;
   if (!renderer.shadowMap.autoUpdate) renderer.shadowMap.needsUpdate = dynamicShadow || shadowFrame % 2 === 0;
   composer.render();
+  if (resolveFirstFrame) { resolveFirstFrame(); resolveFirstFrame = null; }
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
 
+async function revealSceneWhenReady() {
+  await Promise.race([
+    Promise.all(criticalCurtainLoads),
+    new Promise((resolve) => setTimeout(resolve, 5000)),
+  ]);
+  // La primera composición ocurre oculta y compila el pipeline real una sola
+  // vez. No hacemos un compile extra que duplicaría el trabajo de arranque.
+  await firstFrameRendered;
+  await new Promise(requestAnimationFrame);
+  document.body.classList.add('scene-ready');
+  const startDeferred = () => {
+    loadEnvironment();
+    for (const product of PRODUCTS.slice(1)) {
+      fabricTex(product.tex, true, product.repeat * 0.55, product.repeat);
+      fabricTex(product.normal, false, product.repeat * 0.55, product.repeat);
+    }
+  };
+  if ('requestIdleCallback' in window) requestIdleCallback(startDeferred, { timeout: 1800 });
+  else setTimeout(startDeferred, 700);
+}
+revealSceneWhenReady();
+
 window.__cortina = {
   getState: () => ({
     currentIndex, anchoCm, altoCm, switching, qualityTier, performanceMode,
+    sceneReady: document.body.classList.contains('scene-ready'),
     adaptiveRenderScale, renderDpr: renderer.getPixelRatio(),
     qualitySignals: { memoryKnown, deviceMemory, cpuCores, saveData, highDensityMobile, constrainedDevice },
     motion: {

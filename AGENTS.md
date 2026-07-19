@@ -6,7 +6,10 @@ el dedo (touch) o inclinando el teléfono (acelerómetro), pasa entre 3 producto
 con un carrusel, fija ancho/alto con steppers y pide presupuesto por WhatsApp.
 
 **Deploy:** GitHub Pages sirviendo `main`/root → https://aguslaboral.github.io/rollershow-cortina-viva/
-Sin build step: `index.html` + `main.js` son el entregable. `.nojekyll` en raíz.
+`main.js` es la fuente y `npm run build` genera `app.js`, bundle local de
+Three.js y postprocesos que también se versiona para Pages. No volver a imports
+runtime desde CDN: multiplicaban requests y demoraban el primer cuadro mobile.
+`.nojekyll` en raíz.
 Dev local: `python -m http.server 8934` en la raíz del repo → http://localhost:8934/
 
 ## Arquitectura (decisiones ya tomadas — no re-litigar)
@@ -93,7 +96,28 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-19 (ronda r53)
+## Estado al 2026-07-19 (ronda r54)
+
+El pie ya no colisiona con el piso. La urdimbre usa un límite unilateral sólo
+vertical que impide que la gravedad alargue el paño, pero conserva libre todo
+movimiento lateral. En puerta-ventana termina 6 mm por encima del piso; en
+ventana elevada conserva el solape bajo el vano. Blackout/Gasa/Tusor mantienen
+esa separación a 150/200/260 cm sin clamps, pestañas ni doblez hacia arriba.
+
+La carga inicial es atómica: canvas, producto y controles permanecen ocultos
+sobre el fondo carbón con el wordmark hasta que Blackout tiene sus dos mapas y
+existe un primer frame compuesto. Hay fallback opaco a los 5 s; nunca se revela
+una tela transparente. El HDRI y los otros productos se precargan en idle.
+Three.js y addons se empaquetan localmente en `app.js` (629 KB) para eliminar
+la cascada de módulos desde unpkg. Los normal maps textiles pasaron de 9,0 MB a
+1,9 MB y los cinco mapas PBR de ambiente de 4,3 MB a 0,98 MB en WebP, con la
+misma resolución 1024².
+
+QA r54: Playwright verificó mobile/desktop, carga oculta, arrastre real de
+Blackout, carrusel Gasa/Tusor, ausencia de errores y las nueve combinaciones de
+producto/altura. Capturas en `_scratch/qa-free-cloth/r54-*`.
+
+### Histórico r53 (reemplazado por r54)
 
 La ronda r53 reemplaza por completo el dobladillo estructurado de r52. La tela
 queda fijada únicamente en la fila superior: laterales, cuerpo y pie se mueven

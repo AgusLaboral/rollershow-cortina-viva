@@ -3,10 +3,13 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "esbuild main.js --bundle --minify --format=esm --target=es2020 --outfile=app.js",
     "generate-assets": "node scripts/generate-assets.mjs"
   },
   "devDependencies": {
+    "esbuild": "^0.25.6",
     "playwright": "^1.61.1",
-    "sharp": "^0.33.5"
+    "sharp": "^0.33.5",
+    "three": "^0.169.0"
   }
 }
