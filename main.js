@@ -550,14 +550,14 @@ buildWindow();
 // ---------------------------------------------------------------------------
 const PRODUCTS = [
   { name: 'Blackout', color: 'Blanco', tex: 'img/fabric/blackout-albedo.jpg', normal: 'img/fabric/blackout-nor.png',
-    stiffness: 0.952, gravity: 7.8, friction: 0.971, influence: 0.66, dragCap: 0.068, dragResponse: 0.74, edgeStraighten: 0.5, hemStraighten: 0.36, pleatDepth: 0.095, compressionDepth: 0.035, roughness: 0.92,
-    opacity: 1, frostMix: 0, frostLod: 0, weaveStrength: 0, foldShade: 0.34, hemShade: 0.38, backfaceCap: 0.18, castShadow: true, shadowBlock: 1, tint: 0xffffff, sunFactor: 0, backlight: 0, radianceCap: 0.34, normalScale: 0.14, repeat: 1.6 },
+    stiffness: 0.91, gravity: 7.8, friction: 0.977, influence: 0.7, dragCap: 0.075, dragResponse: 0.82, pleatDepth: 0.095, compressionDepth: 0.035, roughness: 0.92,
+    opacity: 1, frostMix: 0, frostLod: 0, weaveStrength: 0, foldShade: 0.34, backfaceCap: 0.18, castShadow: true, shadowBlock: 1, tint: 0xffffff, sunFactor: 0, backlight: 0, radianceCap: 0.34, normalScale: 0.14, repeat: 1.6 },
   { name: 'Gasa', color: 'Beige', tex: 'img/fabric/gasa.jpg', normal: 'img/fabric/gasa-nor.png',
-    stiffness: 0.93, gravity: 6.2, friction: 0.968, influence: 0.58, dragCap: 0.07, dragResponse: 0.86, edgeStraighten: 0.65, hemStraighten: 0.46, pleatDepth: 0.075, compressionDepth: 0.08, roughness: 0.88,
-    opacity: 1, frostMix: 0.74, frostLod: 4.1, weaveStrength: 0.64, foldShade: 0.14, hemShade: 0.72, backfaceCap: 1, castShadow: true, shadowBlock: 0.18, tint: 0xfffbf5, sunFactor: 0.84, backlight: 0, radianceCap: 0.62, normalScale: 0.17, repeat: 2.35 },
+    stiffness: 0.87, gravity: 6.2, friction: 0.972, influence: 0.6, dragCap: 0.075, dragResponse: 0.9, pleatDepth: 0.075, compressionDepth: 0.08, roughness: 0.88,
+    opacity: 1, frostMix: 0.74, frostLod: 4.1, weaveStrength: 0.64, foldShade: 0.14, backfaceCap: 1, castShadow: true, shadowBlock: 0.18, tint: 0xfffbf5, sunFactor: 0.84, backlight: 0, radianceCap: 0.62, normalScale: 0.17, repeat: 2.35 },
   { name: 'Tusor', color: 'Natural', tex: 'img/fabric/tusor-albedo.jpg', normal: 'img/fabric/tusor-nor.png',
-    stiffness: 0.955, gravity: 6.9, friction: 0.963, influence: 0.54, dragCap: 0.06, dragResponse: 0.64, edgeStraighten: 0.8, hemStraighten: 0.56, pleatDepth: 0.09, compressionDepth: 0.065, roughness: 0.92,
-    opacity: 1, frostMix: 0.5, frostLod: 4.2, weaveStrength: 0.68, foldShade: 0.26, hemShade: 0.58, backfaceCap: 0.72, castShadow: true, shadowBlock: 0.56, tint: 0xfff8ed, sunFactor: 0.46, backlight: 0, radianceCap: 0.48, normalScale: 0.24, repeat: 2.05 },
+    stiffness: 0.9, gravity: 6.9, friction: 0.975, influence: 0.56, dragCap: 0.066, dragResponse: 0.72, pleatDepth: 0.09, compressionDepth: 0.065, roughness: 0.92,
+    opacity: 1, frostMix: 0.5, frostLod: 4.2, weaveStrength: 0.68, foldShade: 0.26, backfaceCap: 0.72, castShadow: true, shadowBlock: 0.56, tint: 0xfff8ed, sunFactor: 0.46, backlight: 0, radianceCap: 0.48, normalScale: 0.24, repeat: 2.05 },
 ];
 
 // Captura de baja resolución para transmisión difusa. Gasa y Tusor no son
@@ -617,7 +617,6 @@ function makeCurtainMaterial(p) {
     shader.uniforms.uWeaveStrength = { value: p.weaveStrength };
     shader.uniforms.uBackfaceCap = { value: p.backfaceCap };
     shader.uniforms.uFoldShade = { value: p.foldShade };
-    shader.uniforms.uHemShade = { value: p.hemShade };
     shader.fragmentShader = `uniform float uClothRadianceCap;
       uniform sampler2D uClothBackdrop;
       uniform vec2 uClothViewport;
@@ -627,7 +626,6 @@ function makeCurtainMaterial(p) {
       uniform float uWeaveStrength;
       uniform float uBackfaceCap;
       uniform float uFoldShade;
-      uniform float uHemShade;
       float clothHash(vec2 p) {
         p = fract(p * vec2(123.34, 456.21));
         p += dot(p, p + 45.32);
@@ -656,8 +654,6 @@ function makeCurtainMaterial(p) {
         outgoingLight = mix(outgoingLight, wovenFrost, uFrostMix);
         float foldFacing = pow(abs(dot(normal, geometryViewDir)), 0.65);
         outgoingLight *= mix(1.0, mix(0.7, 1.0, foldFacing), uFoldShade);
-        float sewnHem = 1.0 - smoothstep(0.0, 0.065, vMapUv.y);
-        outgoingLight *= mix(1.0, uHemShade, sewnHem);
         if (!gl_FrontFacing) outgoingLight = min(outgoingLight, diffuseColor.rgb * uBackfaceCap);
         // Salvaguarda material: ningún pliegue textil puede convertirse en
         // fuente de bloom ni alcanzar el blanco exterior de la ventana.
@@ -665,7 +661,7 @@ function makeCurtainMaterial(p) {
         #include <opaque_fragment>
       `);
   };
-  material.customProgramCacheKey = () => `cloth-frost-mip-${p.frostMix}-${p.frostLod}-${p.weaveStrength}-${p.foldShade}-${p.hemShade}-${p.radianceCap}-${p.backfaceCap}`;
+  material.customProgramCacheKey = () => `cloth-frost-mip-${p.frostMix}-${p.frostLod}-${p.weaveStrength}-${p.foldShade}-${p.radianceCap}-${p.backfaceCap}`;
   return material;
 }
 
@@ -721,7 +717,6 @@ const FLOOR_Y = 0.015;
 // colisión lo comprima y lo haga doblarse hacia arriba como tela sobrante.
 const HEM_CLEARANCE = 0.045;
 const WINDOW_HEM_OVERLAP = 0.1;
-const HEM_BAND_M = 0.16;
 let CURTAIN_BOTTOM = Math.max(FLOOR_Y + HEM_CLEARANCE, winY - WINDOW_HEM_OVERLAP);
 let W_M = FULL_W, H_M = ROD_Y + 0.035 - CURTAIN_BOTTOM;
 const PANEL_GAP = 0.18;                // apertura central en reposo (más juntos, pasa un haz)
@@ -771,11 +766,11 @@ function createSim(side) {
         if (x > 1) sim.constraints.push({
           a: i - 2, b: i,
           len: sim.restSpacingX[x - 2] + sim.restSpacingX[x - 1],
-          factor: y === ROWS ? 0.48 : 0.16,
+          factor: 0.13,
         });
         if (y > 1) sim.constraints.push({
           a: i - 2 * (COLS + 1), b: i, len: sy * 2,
-          factor: x === 0 || x === COLS ? 0.52 : 0.12,
+          factor: 0.1,
         });
       }
     }
@@ -826,93 +821,10 @@ function createSim(side) {
         if (w2) { p2.x += ox * w2; p2.y += oy * w2; }
       }
     }
-    // Los dobladillos reales estabilizan orillos y ruedo. Este shape matching
-    // localizado elimina picos de vertices sub-restringidos sin rigidizar el
-    // centro de la tela ni cambiar su respuesta al arrastre.
-    for (const x of [0, COLS]) {
-      const topX = sim.points[x].x;
-      for (let y = 1; y <= ROWS; y++) {
-        const i = y * nx + x;
-        const dx = (topX - sim.points[i].x) * params.edgeStraighten;
-        sim.points[i].x += dx;
-        sim.points[i].px += dx;
-      }
-    }
-    const hemStart = ROWS * nx;
-    const penultimateStart = (ROWS - 1) * nx;
-    let naturalHemY = 0;
-    for (let x = 0; x <= COLS; x++) naturalHemY += sim.points[penultimateStart + x].y;
-    naturalHemY = naturalHemY / nx - H_M / ROWS;
-    const sharedHemY = clamp(
-      lerp(CURTAIN_BOTTOM, naturalHemY, 0.24),
-      Math.max(FLOOR_Y + HEM_CLEARANCE, CURTAIN_BOTTOM - 0.008),
-      CURTAIN_BOTTOM + 0.018,
-    );
-    for (let x = 0; x <= COLS; x++) {
-      const i = hemStart + x;
-      const dy = (sharedHemY - sim.points[i].y) * params.hemStraighten;
-      sim.points[i].y += dy;
-      sim.points[i].py += dy;
-      const hemFloor = sharedHemY - 0.004;
-      if (sim.points[i].y < hemFloor) {
-        const lift = hemFloor - sim.points[i].y;
-        sim.points[i].y += lift;
-        sim.points[i].py += lift;
-      }
-    }
-    // El peso continuo reparte tension entre vecinos sin convertir el ruedo
-    // entero en una regla rigida. Asi acompana la oscilacion larga del pano.
-    for (let pass = 0; pass < 2; pass++) {
-      const smoothed = [];
-      for (let x = 1; x < COLS; x++) {
-        const left = sim.points[hemStart + x - 1].y;
-        const mid = sim.points[hemStart + x].y;
-        const right = sim.points[hemStart + x + 1].y;
-        smoothed[x] = mid + ((left + right) * 0.5 - mid) * 0.46;
-      }
-      for (let x = 1; x < COLS; x++) {
-        const p = sim.points[hemStart + x];
-        const dy = smoothed[x] - p.y;
-        p.y += dy;
-        p.py += dy;
-      }
-    }
-    // La banda cosida no puede darse vuelta sobre si misma. El peso inferior
-    // mantiene las ultimas filas en orden vertical y evita que el cuerpo caiga
-    // por debajo del borde para luego doblarse hacia arriba.
-    const rowSpacing = H_M / ROWS;
-    const structuredRows = Math.max(2, Math.ceil(HEM_BAND_M / rowSpacing));
-    for (let y = ROWS - 1; y >= ROWS - structuredRows; y--) {
-      for (let x = 0; x <= COLS; x++) {
-        const p = sim.points[y * nx + x];
-        const below = sim.points[(y + 1) * nx + x];
-        const minY = below.y + rowSpacing * 0.38;
-        if (p.y < minY) {
-          const dy = minY - p.y;
-          p.y += dy;
-          p.py += dy;
-        }
-      }
-    }
-    // Una cortina colgada puede plegarse en profundidad y desplazarse de lado,
-    // pero una fila superior no atraviesa a la inferior. Esta condicion simple
-    // impide triangulos invertidos y fugas de la ventana durante un gesto.
-    for (let y = ROWS - structuredRows - 1; y >= 1; y--) {
-      for (let x = 0; x <= COLS; x++) {
-        const p = sim.points[y * nx + x];
-        const below = sim.points[(y + 1) * nx + x];
-        const minY = below.y + rowSpacing * 0.06;
-        if (p.y < minY) {
-          const dy = minY - p.y;
-          p.y += dy;
-          p.py += dy;
-        }
-      }
-    }
-    // CURTAIN_BOTTOM define el largo visual, no una superficie de choque.
-    // La unica colision horizontal real es el piso.
+    // Sólo la fila superior está fijada. Laterales, cuerpo y pie conservan la
+    // respuesta física de la malla; no hay shape matching ni banda inferior.
     for (const p of sim.points) {
-      const floorLimit = FLOOR_Y + HEM_CLEARANCE + (1 - p.v) * H_M * 0.35;
+      const floorLimit = FLOOR_Y + 0.008;
       if (p.y < floorLimit) { p.y = floorLimit; p.py = floorLimit; }
     }
   };
@@ -923,15 +835,6 @@ function createSim(side) {
 function makePanelGeometry() { return new THREE.PlaneGeometry(1, 1, COLS, ROWS); }
 function uploadGeometry(geo, sim) {
   const pos = geo.attributes.position, uv = geo.attributes.uv;
-  const hemStart = ROWS * nx;
-  let hemCenterY = 0;
-  for (let x = 0; x <= COLS; x++) hemCenterY += sim.points[hemStart + x].y;
-  hemCenterY = clamp(
-    hemCenterY / nx,
-    Math.max(FLOOR_Y + HEM_CLEARANCE, CURTAIN_BOTTOM - 0.008),
-    CURTAIN_BOTTOM + 0.018,
-  );
-  const hemBandStart = 1 - Math.min(0.35, HEM_BAND_M / Math.max(H_M, HEM_BAND_M));
   for (let y = 0; y <= ROWS; y++) {
     for (let x = 0; x <= COLS; x++) {
       const i = y * nx + x;
@@ -946,28 +849,11 @@ function uploadGeometry(geo, sim) {
         compress = clamp((rest - span) / rest, 0, 1);
       }
       const product = sim.product;
-      const hemBlend = smoothstep(0.8, 1.0, p.v);
-      const baseDepth = (product?.pleatDepth ?? 0.085) * lerp(1.0, 0.94, hemBlend);
-      const dynamicDepth = compress * (product?.compressionDepth ?? 0.08) * lerp(1.0, 0.3, hemBlend);
-      // En una esquina cosida el orillo y el ruedo aplanan gradualmente el
-      // primer pliegue. Sin este taper, la primera columna interior conserva
-      // toda su profundidad Z junto a un borde plano y sobresale en perspectiva
-      // como una pestaña rectangular, aunque el borde físico esté recto.
-      const edgeDistance = Math.min(p.u, 1 - p.u);
-      const sewnCornerTaper = smoothstep(0, 0.14, edgeDistance);
-      const cornerDepth = lerp(1, sewnCornerTaper, hemBlend);
-      const hemProfile = smoothstep(hemBandStart, 1, p.v);
-      // El dobladillo sigue siendo tela plegada. La amplitud converge a un
-      // pliegue estable; no colapsa a Z=0 ni abre un abanico de triangulos.
-      const hemDepth = lerp(1, 0.18, hemProfile);
+      const baseDepth = product?.pleatDepth ?? 0.085;
+      const dynamicDepth = compress * (product?.compressionDepth ?? 0.08);
       const wave = Math.sin(p.u * Math.PI * 2 * PLEAT_COUNT)
-        * (baseDepth + dynamicDepth) * cornerDepth * hemDepth;
-      // Una costura continua de pocos milimetros reemplaza los vertices
-      // independientes del pie. La fisica mueve el conjunto y esta curva
-      // conserva una silueta organica, lisa y repetible.
-      const hemRipple = Math.sin(p.u * Math.PI * 2 * PLEAT_COUNT) * 0.0025;
-      const visualY = lerp(p.y, hemCenterY + hemRipple, hemProfile);
-      pos.setXYZ(i, p.x, visualY, wave);
+        * (baseDepth + dynamicDepth);
+      pos.setXYZ(i, p.x, p.y, wave);
       uv.setXY(i, p.u, 1 - p.v);
     }
   }

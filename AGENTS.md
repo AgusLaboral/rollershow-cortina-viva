@@ -93,7 +93,27 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-16 (ronda r52)
+## Estado al 2026-07-19 (ronda r53)
+
+La ronda r53 reemplaza por completo el dobladillo estructurado de r52. La tela
+queda fijada únicamente en la fila superior: laterales, cuerpo y pie se mueven
+por las mismas constraints físicas y sólo colisionan con el piso real. Se
+eliminaron shape matching de orillos, nivelado y suavizado del ruedo, ordenado
+forzado de filas, reducción de profundidad en el pie y sombreado de doble capa.
+No volver a resolver la silueta inferior con una banda geométrica o visual: si
+aparece una imperfección se corrige en la malla o la restricción causal.
+
+Blackout conserva mayor gravedad y opacidad total pero baja rigidez y aumenta
+respuesta e inercia. Gasa y Tusor también quedan libres con distinta masa y
+respuesta. El motor de transparencia, la potencia constante de ventana, el
+barral retrasado y la jerarquía Blackout/Tusor/Gasa permanecen intactos.
+
+QA r53: Playwright recorrió Blackout, Gasa y Tusor en 1440x900 y 390x844, en
+reposo, arrastre y asentamiento. Los tres aumentaron su abertura durante el
+gesto, el pie quedó por encima del piso real y no hubo errores de consola. Las
+capturas están en `_scratch/qa-free-cloth/`.
+
+### Histórico r52 (reemplazado por r53)
 
 El pie se rehizo como un dobladillo estructurado, no como una fila de vertices
 parchada. Un peso continuo distribuye la tension entre vecinos, mantiene las
