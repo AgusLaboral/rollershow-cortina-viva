@@ -96,7 +96,34 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-19 (ronda r54)
+## Estado al 2026-07-20 (ronda r55)
+
+La experiencia arranca siempre en Gasa y sus mapas pasan a ser los recursos
+críticos del primer cuadro. En mobile únicamente, el LOD de difusión baja 20%
+(4.1 a 3.28), sin alterar `frostMix`, trama, transmisión, sombra ni la
+calibración desktop aprobada. El boot espera mapas, HDRI y una composición
+estable, fuerza el primer shadow map antes de revelar el canvas y prepara la
+capa WebGL/UI oculta para que Gasa no aparezca blanca, transparente ni
+sobreexpuesta antes del primer toque.
+
+La misma URL incorpora un laboratorio reversible con tres modos editoriales:
+`Tela` mantiene el gesto libre y, tras 1 segundo sin entrada, devuelve ambos
+paños a su caída de reposo mediante una transición material de 520 ms; `Abrir`
+permite arrastrar cada paño hacia su lateral y conserva la abertura; `Roller`
+usa una sola malla liviana que sube o baja con drag vertical y oculta el barral
+tradicional. Los dos modos experimentales reutilizan escena, materiales,
+oclusiones, luz y loop existentes: no triplican motores ni URLs. Son candidatos
+de prueba, no un estándar aprobado ni un reemplazo definitivo de la cortina
+tradicional.
+
+QA r55: Playwright headless verificó mobile lite y desktop full con Gasa como
+inicio, consola limpia y capturas de los tres modos. En mobile, la deformación
+libre volvió a una desviación media de 0,03 mm luego del reset; la apertura
+lateral pasó de 9,0% a 47,2% y se conservó; el roller quedó en 16,3% de caída
+con 58,6% de ventana expuesta. Blackout y Tusor siguieron disponibles y
+visualmente conservaron sus niveles de bloqueo.
+
+### Estado r54 preservado
 
 El pie ya no colisiona con el piso. La urdimbre usa un límite unilateral sólo
 vertical que impide que la gravedad alargue el paño, pero conserva libre todo
