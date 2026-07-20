@@ -34,6 +34,8 @@ const anchoValue = document.getElementById('anchoValue');
 const altoValue = document.getElementById('altoValue');
 const ctaQuote = document.getElementById('ctaQuote');
 const muteBtn = document.getElementById('muteBtn');
+const modeSwitch = document.getElementById('modeSwitch');
+const modeButtons = [...document.querySelectorAll('[data-mode]')];
 
 const QUOTE_URL = 'https://www.rollershow.com.ar/cotizar/tradicionales';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -75,7 +77,9 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, QUALITY.dpr));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.shadowMap.autoUpdate = qualityTier === 'full';
+// El boot actualiza sombras en cada cuadro hasta componer una escena estable.
+// El tier lite adopta su cadencia reducida recién después del reveal.
+renderer.shadowMap.autoUpdate = true;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.18;
@@ -139,13 +143,19 @@ backWall.castShadow = true;
 scene.add(backWall);
 
 const ENV_ROT = 2.196; // sol del HDRI centrado en la ventana (calculado del archivo)
+let environmentPromise = null;
 function loadEnvironment() {
-  new RGBELoader().load('img/env/sunset.hdr', (hdr) => {
-    hdr.mapping = THREE.EquirectangularReflectionMapping;
-    scene.environment = hdr;
-    scene.environmentIntensity = 0.015;
-    scene.environmentRotation = new THREE.Euler(0, ENV_ROT, 0);
+  if (environmentPromise) return environmentPromise;
+  environmentPromise = new Promise((resolve) => {
+    new RGBELoader().load('img/env/sunset.hdr', (hdr) => {
+      hdr.mapping = THREE.EquirectangularReflectionMapping;
+      scene.environment = hdr;
+      scene.environmentIntensity = 0.015;
+      scene.environmentRotation = new THREE.Euler(0, ENV_ROT, 0);
+      resolve();
+    }, undefined, resolve);
   });
+  return environmentPromise;
 }
 
 // Porcelanato marmolado claro: Marble005 CC0 aporta veta, normal y roughness;
@@ -414,10 +424,12 @@ function buildWindow() {
   rod.position.set(0, ROD_Y - 0.24, backZ);
   rod.castShadow = true;
   windowGroup.add(rod);
+  LATE.rodParts = [rod];
   for (const x of [-rodLength * 0.5, rodLength * 0.5]) {
     const cap = new THREE.Mesh(new THREE.SphereGeometry(0.032, 16, 16), rodMat);
     cap.position.set(x, ROD_Y - 0.24, backZ);
     windowGroup.add(cap);
+    LATE.rodParts.push(cap);
   }
   const p2f = (x, y, z) => { const t = y / -SUN_DIR.y; return [x + SUN_DIR.x * t, 0.001, z + SUN_DIR.z * t]; };
   // El volumen excede apenas el vano: el feather ocurre detrás del marco y
@@ -556,11 +568,13 @@ const PRODUCTS = [
     opacity: 1, frostMix: 0, frostLod: 0, weaveStrength: 0, foldShade: 0.34, backfaceCap: 0.18, castShadow: true, shadowBlock: 1, tint: 0xffffff, sunFactor: 0, backlight: 0, radianceCap: 0.34, normalScale: 0.14, repeat: 1.6 },
   { name: 'Gasa', color: 'Beige', tex: 'img/fabric/gasa.jpg', normal: 'img/fabric/gasa-nor.webp',
     stiffness: 0.87, gravity: 6.2, friction: 0.972, influence: 0.6, dragCap: 0.075, dragResponse: 0.9, pleatDepth: 0.075, compressionDepth: 0.08, roughness: 0.88,
-    opacity: 1, frostMix: 0.74, frostLod: 4.1, weaveStrength: 0.64, foldShade: 0.14, backfaceCap: 1, castShadow: true, shadowBlock: 0.18, tint: 0xfffbf5, sunFactor: 0.84, backlight: 0, radianceCap: 0.62, normalScale: 0.17, repeat: 2.35 },
+    opacity: 1, frostMix: 0.74, frostLod: isMobile ? 3.28 : 4.1, weaveStrength: 0.64, foldShade: 0.14, backfaceCap: 1, castShadow: true, shadowBlock: 0.18, tint: 0xfffbf5, sunFactor: 0.84, backlight: 0, radianceCap: 0.62, normalScale: 0.17, repeat: 2.35 },
   { name: 'Tusor', color: 'Natural', tex: 'img/fabric/tusor-albedo.jpg', normal: 'img/fabric/tusor-nor.webp',
     stiffness: 0.9, gravity: 6.9, friction: 0.975, influence: 0.56, dragCap: 0.066, dragResponse: 0.72, pleatDepth: 0.09, compressionDepth: 0.065, roughness: 0.92,
     opacity: 1, frostMix: 0.5, frostLod: 4.2, weaveStrength: 0.68, foldShade: 0.26, backfaceCap: 0.72, castShadow: true, shadowBlock: 0.56, tint: 0xfff8ed, sunFactor: 0.46, backlight: 0, radianceCap: 0.48, normalScale: 0.24, repeat: 2.05 },
 ];
+const INITIAL_PRODUCT_INDEX = 1;
+const INITIAL_PRODUCT = PRODUCTS[INITIAL_PRODUCT_INDEX];
 
 // Captura de baja resolución para transmisión difusa. Gasa y Tusor no son
 // vidrio alfa: conservan superficie, profundidad y trama, mientras el fondo se
@@ -584,7 +598,7 @@ function fabricTex(src, srgb, rep, repY) {
   let resolveLoad;
   const loaded = new Promise((resolve) => { resolveLoad = resolve; });
   const t = texLoader.load(src, resolveLoad, undefined, resolveLoad);
-  if (src.includes('/blackout-')) criticalCurtainLoads.push(loaded);
+  if (src === INITIAL_PRODUCT.tex || src === INITIAL_PRODUCT.normal) criticalCurtainLoads.push(loaded);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.repeat.set(rep, repY ?? rep);
   t.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), qualityTier === 'full' ? 8 : 2);
@@ -671,35 +685,34 @@ function makeCurtainMaterial(p) {
   return material;
 }
 
-// Sombra parcial estable: una máscara Bayer hace que PCF integre una sombra
-// proporcional sin convertir gasa/tusor en un bloque negro opaco.
+// Sombra parcial estable: un hash de profundidad hace que PCF integre una
+// sombra proporcional sin convertir Gasa/Tusor en un bloque negro opaco.
 function makeShadowMaterial(p) {
-  const c = document.createElement('canvas');
-  c.width = c.height = 8;
-  const g = c.getContext('2d');
-  const image = g.createImageData(8, 8);
-  const bayer = [
-    0,32,8,40,2,34,10,42, 48,16,56,24,50,18,58,26,
-    12,44,4,36,14,46,6,38, 60,28,52,20,62,30,54,22,
-    3,35,11,43,1,33,9,41, 51,19,59,27,49,17,57,25,
-    15,47,7,39,13,45,5,37, 63,31,55,23,61,29,53,21,
-  ];
-  const cutoff = Math.round(p.shadowBlock * 64);
-  for (let i = 0; i < 64; i++) {
-    const on = bayer[i] < cutoff ? 255 : 0;
-    image.data.set([on, on, on, 255], i * 4);
+  if (p.shadowBlock >= 0.999) {
+    return new THREE.MeshDepthMaterial({
+      depthPacking: THREE.RGBADepthPacking,
+      side: THREE.DoubleSide,
+    });
   }
-  g.putImageData(image, 0, 0);
-  const alpha = new THREE.CanvasTexture(c);
-  alpha.wrapS = alpha.wrapT = THREE.RepeatWrapping;
-  alpha.repeat.set(32, 32);
-  alpha.magFilter = THREE.NearestFilter;
-  alpha.minFilter = THREE.NearestFilter;
-  return new THREE.MeshDepthMaterial({
-    depthPacking: THREE.RGBADepthPacking,
-    alphaMap: alpha,
-    alphaTest: 0.5,
+  return new THREE.ShaderMaterial({
+    uniforms: { uShadowBlock: { value: p.shadowBlock } },
+    vertexShader: `void main() {
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+    fragmentShader: `
+      #include <packing>
+      uniform float uShadowBlock;
+      float shadowHash(vec2 p) {
+        return fract(52.9829189 * fract(dot(floor(p), vec2(0.06711056, 0.00583715))));
+      }
+      void main() {
+        if (shadowHash(gl_FragCoord.xy) > uShadowBlock) discard;
+        gl_FragColor = packDepthToRGBA(gl_FragCoord.z);
+      }
+    `,
     side: THREE.DoubleSide,
+    depthTest: true,
+    depthWrite: true,
   });
 }
 
@@ -733,7 +746,7 @@ const gatheredU = (u) => u + (PLEAT_AMPLITUDE / (PLEAT_COUNT * Math.PI * 2)) * M
 
 // side: -1 = paño izquierdo (cuelga desde el borde izquierdo hacia el centro)
 function createSim(side) {
-  const sim = { side, points: [], constraints: [], tethers: [], restSpacingX: [], spread: 1, offsetX: 0, kinematic: null };
+  const sim = { side, points: [], constraints: [], tethers: [], restSpacingX: [], spread: 1, offsetX: 0, kinematic: null, relaxing: null };
   // reposo del paño: desde el borde exterior hasta cerca del centro (gap)
   sim.panelRange = () => {
     const half = W_M / 2;
@@ -748,7 +761,7 @@ function createSim(side) {
     return sim.offsetX + outer + (baseX - outer) * sim.spread;
   };
   sim.build = () => {
-    sim.points = []; sim.constraints = []; sim.tethers = []; sim.restSpacingX = [];
+    sim.points = []; sim.constraints = []; sim.tethers = []; sim.restSpacingX = []; sim.relaxing = null;
     const { outer, inner } = sim.panelRange();
     const sy = H_M / ROWS;
     const colX = [];
@@ -782,6 +795,13 @@ function createSim(side) {
       }
     }
   };
+  sim.startRelax = () => {
+    sim.relaxing = {
+      startedAt: performance.now(),
+      from: sim.points.map((p) => ({ x: p.x, y: p.y })),
+    };
+  };
+  sim.cancelRelax = () => { sim.relaxing = null; };
   sim.step = (dt, params, ptr, tiltX, gravityTilt) => {
     if (sim.kinematic) {
       const k = sim.kinematic;
@@ -796,6 +816,28 @@ function createSim(side) {
         p.y = ROD_Y + 0.035 - p.v * ROWS * sy;
         p.px = p.x; p.py = p.y;
       }
+      return;
+    }
+    if (interactionMode === 'open') {
+      for (const p of sim.points) {
+        p.x = sim.anchorX(p.baseX);
+        p.y = ROD_Y + 0.035 - p.v * H_M;
+        p.px = p.x; p.py = p.y;
+      }
+      return;
+    }
+    if (sim.relaxing) {
+      const progress = clamp((performance.now() - sim.relaxing.startedAt) / 520, 0, 1);
+      const e = easeInOut(progress);
+      for (let i = 0; i < sim.points.length; i++) {
+        const p = sim.points[i], from = sim.relaxing.from[i];
+        const targetX = sim.anchorX(p.baseX);
+        const targetY = ROD_Y + 0.035 - p.v * H_M;
+        p.x = lerp(from.x, targetX, e);
+        p.y = lerp(from.y, targetY, e);
+        p.px = p.x; p.py = p.y;
+      }
+      if (progress >= 1) sim.relaxing = null;
       return;
     }
     const dt2 = dt * dt;
@@ -910,17 +952,68 @@ function createSet(product) {
   return set;
 }
 
-const setA = createSet(PRODUCTS[0]);
-// El segundo set reutiliza Blackout durante el arranque. Gasa y Tusor se
+const setA = createSet(INITIAL_PRODUCT);
+// El segundo set reutiliza Gasa durante el arranque. Blackout y Tusor se
 // precargan después del primer cuadro para no competir con el producto visible.
-const setB = createSet(PRODUCTS[0]);
+const setB = createSet(INITIAL_PRODUCT);
 setB.setVisible(false);
-setA.setCastShadow(PRODUCTS[0].castShadow);
+setA.setCastShadow(INITIAL_PRODUCT.castShadow);
 
-let currentIndex = 0;
-let active = PRODUCTS[0];
+let currentIndex = INITIAL_PRODUCT_INDEX;
+let active = INITIAL_PRODUCT;
 let activeSet = setA, idleSet = setB;
-let lightMix = { from: PRODUCTS[0], to: PRODUCTS[0], t: 1 };
+let lightMix = { from: INITIAL_PRODUCT, to: INITIAL_PRODUCT, t: 1 };
+
+// Prototipo Roller: comparte el motor textil y de sombra, pero usa una sola
+// lamina vertical. No crea otra escena ni un segundo render loop.
+const ROLLER_COLS = qualityTier === 'full' ? 40 : 24;
+const ROLLER_ROWS = qualityTier === 'full' ? 32 : 20;
+const rollerGeo = new THREE.PlaneGeometry(1, 1, ROLLER_COLS, ROLLER_ROWS);
+const rollerMesh = new THREE.Mesh(rollerGeo, makeCurtainMaterial(INITIAL_PRODUCT));
+rollerMesh.position.z = CURTAIN_Z;
+rollerMesh.renderOrder = 3;
+rollerMesh.receiveShadow = true;
+rollerMesh.castShadow = INITIAL_PRODUCT.shadowBlock >= 0.95;
+rollerMesh.frustumCulled = false;
+rollerMesh.layers.enable(2);
+rollerMesh.visible = false;
+scene.add(rollerMesh);
+const rollerBar = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.045, 0.045, 1, 24),
+  new THREE.MeshStandardMaterial({ color: 0xf2eee8, roughness: 0.54, metalness: 0.08 }),
+);
+rollerBar.rotation.z = Math.PI / 2;
+rollerBar.castShadow = true;
+rollerBar.visible = false;
+scene.add(rollerBar);
+let rollerDrop = 1;
+function uploadRollerGeometry() {
+  const pos = rollerGeo.attributes.position;
+  const top = ROD_Y + 0.035;
+  for (let y = 0; y <= ROLLER_ROWS; y++) {
+    const v = y / ROLLER_ROWS;
+    for (let x = 0; x <= ROLLER_COLS; x++) {
+      const u = x / ROLLER_COLS;
+      const i = y * (ROLLER_COLS + 1) + x;
+      const edgeTaper = Math.sin(u * Math.PI);
+      const z = Math.sin(u * Math.PI * 2) * 0.006 * edgeTaper;
+      pos.setXYZ(i, (u - 0.5) * W_M, top - v * H_M * rollerDrop, z);
+    }
+  }
+  pos.needsUpdate = true;
+  rollerGeo.computeVertexNormals();
+  rollerBar.scale.y = W_M * 0.82;
+  rollerBar.position.set(0, top + 0.015, CURTAIN_Z - 0.025);
+}
+function setRollerMaterial(product) {
+  rollerMesh.material?.dispose();
+  rollerMesh.material = makeCurtainMaterial(product);
+  // En este prototipo Roller la sombra directa se activa sólo para Blackout.
+  // Evita un segundo depth shader dithered en mobile; la transmisión de Gasa y
+  // Tusor sigue modulando haze y ambiente con el mismo motor aprobado.
+  rollerMesh.castShadow = product.shadowBlock >= 0.95;
+}
+uploadRollerGeometry();
 
 // ---------------------------------------------------------------------------
 // God-rays marcados: la oclusión real de los paños modula el resplandor.
@@ -945,7 +1038,7 @@ const clothMaskTarget = new THREE.WebGLRenderTarget(OCC_SIZE, Math.round(OCC_SIZ
 });
 const occOpaque = new THREE.MeshBasicMaterial({ color: 0x000000 });
 const occSwap = new Map();
-const curtainMeshes = new Set([...setA.meshes, ...setB.meshes]);
+const curtainMeshes = new Set([...setA.meshes, ...setB.meshes, rollerMesh]);
 const occCurtainMats = new Map([...curtainMeshes].map((mesh) => [
   mesh, new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true }),
 ]));
@@ -1138,13 +1231,21 @@ function physicalOpening(set) {
   return clamp((gap / (ROWS + 1)) / Math.max(W_M, 0.001), 0, 0.7);
 }
 
+let interactionMode = 'fabric';
+function currentPhysicalOpening(set = activeSet) {
+  return interactionMode === 'roller'
+    ? clamp((1 - rollerDrop) * 0.7, 0, 0.7)
+    : physicalOpening(set);
+}
+
 let interactionOpenEnergy = 0;
+let sceneRevealAt = Infinity;
 function applyLightMix() {
   const t = lightMix.t;
   const transmission = lerp(lightMix.from.sunFactor, lightMix.to.sunFactor, t);
   const opening = transitionState
-    ? lerp(physicalOpening(activeSet), physicalOpening(idleSet), t)
-    : physicalOpening(activeSet);
+    ? lerp(currentPhysicalOpening(activeSet), currentPhysicalOpening(idleSet), t)
+    : currentPhysicalOpening(activeSet);
   // La tela aporta transmisión; la separación física entre paños aporta luz
   // directa. Blackout tiene transmisión cero: nunca pasa luz por su superficie.
   const normalizedOpening = smoothstep(0.065, 0.22, opening);
@@ -1161,7 +1262,10 @@ function applyLightMix() {
   // por encima de la tela. La bruma 3D sí queda ocluida por cada paño.
   // Bruma alineada con la ventana y ocluida por la tela. Reemplaza las capas
   // aditivas que generaban luz falsa en la pared izquierda.
-  godrayPass.uniforms.strength.value = atmosphereEnergy * 0.27;
+  const revealEnergy = Number.isFinite(sceneRevealAt)
+    ? smoothstep(0, 900, performance.now() - sceneRevealAt)
+    : 0;
+  godrayPass.uniforms.strength.value = atmosphereEnergy * 0.27 * revealEnergy;
   shaftMat.uniforms.uIntensity.value = 0;
   // La ventana mantiene luminancia y bloom constantes. Al abrirse sólo queda
   // expuesta una superficie mayor; no se aumenta artificialmente su potencia.
@@ -1178,7 +1282,11 @@ function applyLightMix() {
 let audio = null;
 let audioMuted = false;
 function initAudio() {
-  if (audio || audioMuted) return;
+  if (audio) {
+    if (!audioMuted && audio.ctx.state === 'suspended') audio.ctx.resume().catch(() => {});
+    return;
+  }
+  if (audioMuted) return;
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     const master = ctx.createGain();
@@ -1269,36 +1377,144 @@ function pointerToWorld(clientX, clientY) {
   if (raycaster.ray.intersectPlane(curtainPlane, hitPoint)) return hitPoint;
   return null;
 }
+function worldToClient(x, y, z = CURTAIN_Z) {
+  const point = new THREE.Vector3(x, y, z).project(camera);
+  const r = canvas.getBoundingClientRect();
+  return {
+    x: (point.x * 0.5 + 0.5) * r.width + r.left,
+    y: (-point.y * 0.5 + 0.5) * r.height + r.top,
+  };
+}
 function firstInteraction() { initAudio(); revealPanel(); }
+let fabricResetTimer = 0;
+let modeGesture = null;
+function cancelFabricReset() {
+  clearTimeout(fabricResetTimer);
+  fabricResetTimer = 0;
+  for (const sim of activeSet.sims) sim.cancelRelax();
+}
+function scheduleFabricReset() {
+  if (interactionMode !== 'fabric') return;
+  clearTimeout(fabricResetTimer);
+  fabricResetTimer = setTimeout(() => {
+    ptr.active = false;
+    for (const sim of activeSet.sims) sim.startRelax();
+  }, 1000);
+}
+function beginModeGesture(w) {
+  if (!w || interactionMode === 'fabric') return;
+  if (interactionMode === 'open') {
+    const sim = activeSet.sims[w.x < 0 ? 0 : 1];
+    modeGesture = { mode: 'open', sim, startX: w.x, startSpread: sim.spread };
+  } else {
+    modeGesture = { mode: 'roller', startY: w.y, startDrop: rollerDrop };
+  }
+}
+function updateModeGesture(w) {
+  if (!w || !modeGesture) return;
+  if (modeGesture.mode === 'open') {
+    const outward = modeGesture.sim.side * (w.x - modeGesture.startX);
+    modeGesture.sim.spread = clamp(modeGesture.startSpread - outward / Math.max(0.3, W_M * 0.38), GATHER_SPREAD, 1);
+    modeGesture.sim.cancelRelax();
+    interactionOpenEnergy = Math.max(interactionOpenEnergy, 1 - modeGesture.sim.spread);
+  } else {
+    rollerDrop = clamp(modeGesture.startDrop - (w.y - modeGesture.startY) / Math.max(0.4, H_M), 0.08, 1);
+    uploadRollerGeometry();
+    interactionOpenEnergy = Math.max(interactionOpenEnergy, 1 - rollerDrop);
+  }
+}
+function endModeGesture() { modeGesture = null; ptr.active = false; }
+function setInteractionMode(mode) {
+  if (!['fabric', 'open', 'roller'].includes(mode) || mode === interactionMode || switching) return;
+  cancelFabricReset();
+  endModeGesture();
+  interactionMode = mode;
+  modeButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.mode === mode)));
+  for (const sim of activeSet.sims) {
+    sim.spread = 1;
+    sim.offsetX = 0;
+    sim.build();
+  }
+  idleSet.setVisible(false);
+  const isRoller = mode === 'roller';
+  activeSet.setVisible(!isRoller);
+  rollerMesh.visible = isRoller;
+  rollerBar.visible = isRoller;
+  LATE.rodParts?.forEach((part) => { part.visible = !isRoller; });
+  if (isRoller) {
+    rollerDrop = 1;
+    setRollerMaterial(active);
+    uploadRollerGeometry();
+  }
+  const messages = {
+    fabric: 'Mové la tela. Vuelve a su caída natural después de un segundo.',
+    open: 'Arrastrá cada paño hacia el costado para abrirlo.',
+    roller: 'Deslizá la tela hacia arriba o abajo.',
+  };
+  hint.textContent = messages[mode];
+  hint.classList.remove('hidden');
+  clearTimeout(setInteractionMode.hintTimer);
+  setInteractionMode.hintTimer = setTimeout(() => hint.classList.add('hidden'), 2200);
+  applyLightMix();
+}
+modeButtons.forEach((button) => button.addEventListener('click', () => setInteractionMode(button.dataset.mode)));
 canvas.addEventListener('mouseenter', (e) => {
   firstInteraction();
+  if (interactionMode !== 'fabric') return;
   const w = pointerToWorld(e.clientX, e.clientY);
-  if (w) { ptr.x = ptr.px = w.x; ptr.y = ptr.py = w.y; ptr.active = true; }
+  if (w) { cancelFabricReset(); ptr.x = ptr.px = w.x; ptr.y = ptr.py = w.y; ptr.active = true; }
+});
+canvas.addEventListener('mousedown', (e) => {
+  if (interactionMode === 'fabric') return;
+  firstInteraction();
+  beginModeGesture(pointerToWorld(e.clientX, e.clientY));
 });
 canvas.addEventListener('mousemove', (e) => {
   const w = pointerToWorld(e.clientX, e.clientY);
+  if (interactionMode !== 'fabric') {
+    updateModeGesture(w);
+    return;
+  }
   if (w) {
+    cancelFabricReset();
     exciteAtmosphere(w.x, w.y, w.x - ptr.x);
     ptr.px = ptr.x; ptr.py = ptr.y; ptr.x = w.x; ptr.y = w.y; ptr.active = true;
+    scheduleFabricReset();
   }
   revealPanel();
 });
-canvas.addEventListener('mouseleave', () => { ptr.active = false; });
+canvas.addEventListener('mouseleave', () => {
+  ptr.active = false;
+  if (interactionMode === 'fabric') scheduleFabricReset();
+  else endModeGesture();
+});
+window.addEventListener('mouseup', endModeGesture);
 canvas.addEventListener('touchstart', (e) => {
   firstInteraction();
   ensureMotionPermission();
   const t = e.touches[0], w = pointerToWorld(t.clientX, t.clientY);
-  if (w) { ptr.x = ptr.px = w.x; ptr.y = ptr.py = w.y; ptr.active = true; }
+  if (interactionMode === 'fabric') {
+    if (w) { cancelFabricReset(); ptr.x = ptr.px = w.x; ptr.y = ptr.py = w.y; ptr.active = true; }
+  } else beginModeGesture(w);
 }, { passive: true });
 canvas.addEventListener('touchmove', (e) => {
   e.preventDefault();
   const t = e.touches[0], w = pointerToWorld(t.clientX, t.clientY);
+  if (interactionMode !== 'fabric') {
+    updateModeGesture(w);
+    return;
+  }
   if (w) {
+    cancelFabricReset();
     exciteAtmosphere(w.x, w.y, w.x - ptr.x);
     ptr.px = ptr.x; ptr.py = ptr.y; ptr.x = w.x; ptr.y = w.y; ptr.active = true;
   }
 }, { passive: false });
-const endTouch = () => { ptr.active = false; };
+const endTouch = () => {
+  ptr.active = false;
+  if (interactionMode === 'fabric') scheduleFabricReset();
+  else endModeGesture();
+};
 canvas.addEventListener('touchend', endTouch);
 canvas.addEventListener('touchcancel', endTouch);
 window.addEventListener('resize', resize);
@@ -1361,6 +1577,20 @@ const TRANSITION_SECS = 1.5;
 
 function goTo(next) {
   if (switching) return;
+  if (interactionMode === 'roller') {
+    const to = PRODUCTS[next];
+    activeSet.setMaterial(to);
+    activeSet.setCastShadow(to.castShadow);
+    setRollerMaterial(to);
+    active = to;
+    currentIndex = next;
+    lightMix = { from: to, to, t: 1 };
+    productName.textContent = to.name;
+    productColor.textContent = to.color;
+    updateQuoteLink();
+    applyLightMix();
+    return;
+  }
   switching = true;
   prevBtn.disabled = true; nextBtn.disabled = true;
   const to = PRODUCTS[next];
@@ -1431,6 +1661,8 @@ function applySize() {
   H_M = ROD_Y + 0.035 - CURTAIN_BOTTOM;
   for (const sim of activeSet.sims) { sim.spread = 1; sim.offsetX = 0; sim.build(); }
   if (idleSet.visible) for (const sim of idleSet.sims) sim.build();
+  uploadRollerGeometry();
+  LATE.rodParts?.forEach((part) => { part.visible = interactionMode !== 'roller'; });
   updateCameraBase();
 }
 document.querySelectorAll('[data-step]').forEach((btn) => {
@@ -1543,6 +1775,9 @@ function probePerformance(elapsed) {
 }
 let resolveFirstFrame;
 const firstFrameRendered = new Promise((resolve) => { resolveFirstFrame = resolve; });
+let bootComposedFrames = 0;
+let bootStableFrames = 0;
+const bootProbePixel = new Uint8Array(4);
 function loop(now) {
   const elapsed = Math.min((now - last) / 1000, 0.16);
   last = now;
@@ -1555,7 +1790,7 @@ function loop(now) {
     if (transitionState) transitionDone = stepTransition() || transitionDone;
     // El delta del puntero es un impulso, no una fuerza continua. Aplicarlo en
     // cada subpaso hacia que una sola entrada se acumulara hasta romper la tela.
-    const impulse = s === 0 ? ptr : null;
+    const impulse = s === 0 && interactionMode === 'fabric' ? ptr : null;
     for (const sim of activeSet.sims) sim.step(PHYS_DT, transitionState ? lightMix.from : active, impulse, tiltX, tiltGravity);
     if (idleSet.visible) for (const sim of idleSet.sims) sim.step(PHYS_DT, lightMix.to, null, tiltX, tiltGravity);
   }
@@ -1595,27 +1830,65 @@ function loop(now) {
   renderClothBackdrop();
   renderOcclusionPass();
   shadowFrame += 1;
-  const dynamicShadow = ptr.active || switching || Math.abs(tiltX) > 0.03 || Math.abs(tiltGravity) > 0.01;
+  const relaxing = activeSet.sims.some((sim) => sim.relaxing);
+  const dynamicShadow = ptr.active || Boolean(modeGesture) || relaxing || switching || Math.abs(tiltX) > 0.03 || Math.abs(tiltGravity) > 0.01;
   if (!renderer.shadowMap.autoUpdate) renderer.shadowMap.needsUpdate = dynamicShadow || shadowFrame % 2 === 0;
   composer.render();
-  if (resolveFirstFrame) { resolveFirstFrame(); resolveFirstFrame = null; }
+  if (resolveFirstFrame) {
+    bootComposedFrames += 1;
+    // El pase volumetrico puede tardar algunos cuadros en estabilizar sus
+    // targets. Se prueba un pixel del extremo que debe ser oscuro y se revela
+    // la escena solo tras tres cuadros coherentes, con fallback acotado.
+    const gl = renderer.getContext();
+    gl.readPixels(4, Math.max(1, gl.drawingBufferHeight - 5), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, bootProbePixel);
+    const edgeLuma = bootProbePixel[0] * 0.2126 + bootProbePixel[1] * 0.7152 + bootProbePixel[2] * 0.0722;
+    bootStableFrames = edgeLuma < 88 ? bootStableFrames + 1 : 0;
+    if ((bootComposedFrames >= 4 && bootStableFrames >= 3) || bootComposedFrames >= 90) {
+      resolveFirstFrame(); resolveFirstFrame = null;
+    }
+  }
   requestAnimationFrame(loop);
 }
-requestAnimationFrame(loop);
 
 async function revealSceneWhenReady() {
   await Promise.race([
     Promise.all(criticalCurtainLoads),
     new Promise((resolve) => setTimeout(resolve, 5000)),
   ]);
+  await Promise.race([
+    loadEnvironment(),
+    new Promise((resolve) => setTimeout(resolve, 2500)),
+  ]);
+  // La simulacion y los shaders arrancan con los mapas del producto inicial
+  // resueltos. Evita compilar una Gasa incompleta durante el boot.
+  ptr.x = ptr.px = 0;
+  ptr.y = ptr.py = CURTAIN_BOTTOM + H_M * 0.5;
+  ptr.active = true;
+  renderer.shadowMap.autoUpdate = true;
+  renderer.shadowMap.needsUpdate = true;
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
   // La primera composición ocurre oculta y compila el pipeline real una sola
   // vez. No hacemos un compile extra que duplicaría el trabajo de arranque.
   await firstFrameRendered;
+  ptr.active = false;
+  await new Promise(requestAnimationFrame);
+  // Chrome mobile puede conservar el primer buffer WebGL hasta que la capa UI
+  // cambia de estado. Se compone ese estado mientras todo sigue oculto y se
+  // revierte antes del reveal; el AudioContext suspendido se reanuda luego con
+  // el primer gesto real.
+  firstInteraction();
+  await new Promise(requestAnimationFrame);
+  measurePanel.classList.remove('visible');
+  productLabel.classList.remove('raised');
+  hint.classList.remove('hidden');
+  revealed = false;
   await new Promise(requestAnimationFrame);
   document.body.classList.add('scene-ready');
+  sceneRevealAt = performance.now();
+  renderer.shadowMap.autoUpdate = qualityTier === 'full';
   const startDeferred = () => {
-    loadEnvironment();
-    for (const product of PRODUCTS.slice(1)) {
+    for (const product of PRODUCTS.filter((_, index) => index !== INITIAL_PRODUCT_INDEX)) {
       fabricTex(product.tex, true, product.repeat * 0.55, product.repeat);
       fabricTex(product.normal, false, product.repeat * 0.55, product.repeat);
     }
@@ -1627,7 +1900,7 @@ revealSceneWhenReady();
 
 window.__cortina = {
   getState: () => ({
-    currentIndex, anchoCm, altoCm, switching, qualityTier, performanceMode,
+    currentIndex, anchoCm, altoCm, switching, interactionMode, rollerDrop, qualityTier, performanceMode,
     sceneReady: document.body.classList.contains('scene-ready'),
     adaptiveRenderScale, renderDpr: renderer.getPixelRatio(),
     qualitySignals: { memoryKnown, deviceMemory, cpuCores, saveData, highDensityMobile, constrainedDevice },
@@ -1636,16 +1909,28 @@ window.__cortina = {
       baselineLateral: motionBaselineLateral, baselineGravity: motionBaselineGravity,
     },
     winW, winH, winY, curtainBottom: CURTAIN_BOTTOM, floorY: FLOOR_Y,
+    interactionTargets: {
+      left: worldToClient(-W_M * 0.28, CURTAIN_BOTTOM + H_M * 0.55),
+      right: worldToClient(W_M * 0.28, CURTAIN_BOTTOM + H_M * 0.55),
+      roller: worldToClient(0, CURTAIN_BOTTOM + H_M * 0.45),
+    },
     sourceEnergy: LATE.sourceEnergy || 0, hazeStrength: LATE.hazeStrength || 0, interactionOpenEnergy,
-    opening: physicalOpening(activeSet),
+    opening: currentPhysicalOpening(activeSet),
+    panelSpreads: activeSet.sims.map((sim) => sim.spread),
     productName: PRODUCTS[currentIndex].name, productColor: PRODUCTS[currentIndex].color,
-    panels: activeSet.meshes.map((m) => {
+    panels: activeSet.meshes.map((m, panelIndex) => {
       const a = m.geometry.getAttribute('position');
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      let restDisplacement = 0;
       for (let i = 0; i < a.count; i++) {
         minX = Math.min(minX, a.getX(i)); maxX = Math.max(maxX, a.getX(i));
         minY = Math.min(minY, a.getY(i)); maxY = Math.max(maxY, a.getY(i));
         minZ = Math.min(minZ, a.getZ(i)); maxZ = Math.max(maxZ, a.getZ(i));
+        const p = activeSet.sims[panelIndex].points[i];
+        restDisplacement += Math.hypot(
+          p.x - activeSet.sims[panelIndex].anchorX(p.baseX),
+          p.y - (ROD_Y + 0.035 - p.v * H_M),
+        );
       }
       let hemMinY = Infinity, hemMaxY = -Infinity;
       let hemMaxAbsZ = 0;
@@ -1703,6 +1988,7 @@ window.__cortina = {
         minX, maxX, minY, maxY, minZ, maxZ, hemMinY, hemMaxY, hemMaxAbsZ,
         outerEdgeMinX, outerEdgeMaxX, outerEdgeSpan: outerEdgeMaxX - outerEdgeMinX,
         outerEdgeCurveMax, bottomCornerDepth, hemProjectedDeviationPx, hemProjectedKinkPx,
+        meanRestDisplacement: restDisplacement / a.count,
       };
     }),
   }),
@@ -1711,8 +1997,26 @@ window.__cortina = {
     const w2 = pointerToWorld(clientX, clientY);
     if (w1 && w2) {
       exciteAtmosphere(w2.x, w2.y, w2.x - w1.x);
+      cancelFabricReset();
       ptr.active = true; ptr.px = w1.x; ptr.py = w1.y; ptr.x = w2.x; ptr.y = w2.y;
+      scheduleFabricReset();
     }
+  },
+  setMode: setInteractionMode,
+  screenToWorld: (x, y) => {
+    const point = pointerToWorld(x, y);
+    return point ? { x: point.x, y: point.y } : null;
+  },
+  dragMode: (fromX, fromY, toX, toY) => {
+    const startHit = pointerToWorld(fromX, fromY);
+    const start = startHit ? { x: startHit.x, y: startHit.y } : null;
+    const endHit = pointerToWorld(toX, toY);
+    const end = endHit ? { x: endHit.x, y: endHit.y } : null;
+    beginModeGesture(start);
+    updateModeGesture(end);
+    const result = { start: start ? { x: start.x, y: start.y } : null, end: end ? { x: end.x, y: end.y } : null, spreads: activeSet.sims.map((sim) => sim.spread), rollerDrop };
+    endModeGesture();
+    return result;
   },
   injectOrientation: (beta, gamma) => onOrientation({ beta, gamma }),
   jumpToProduct: (next) => {
@@ -1720,6 +2024,7 @@ window.__cortina = {
     const product = PRODUCTS[next];
     activeSet.setMaterial(product);
     activeSet.setCastShadow(product.castShadow);
+    setRollerMaterial(product);
     for (const sim of activeSet.sims) {
       sim.spread = 1;
       sim.offsetX = 0;
