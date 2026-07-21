@@ -96,7 +96,32 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-21 (ronda r56)
+## Estado al 2026-07-21 (ronda r57)
+
+La navegación cíclica Anterior/Siguiente fue reemplazada por un selector óptico
+explícito y accesible. Ordena siempre los productos desde menor a mayor paso de
+luz y usa una misma gramática causal: sol, paño y cero/uno/tres rayos que lo
+atraviesan. El icono nunca queda solo: se acompaña por producto y beneficio
+óptico. En tradicional ofrece Blackout / Tusor / Gasa; en Roller ofrece
+Blackout / Decorativa / Screen. La taxonomía coincide con la API oficial:
+Oscuridad total, Luz y privacidad, Luz y visibilidad al exterior.
+
+Ancho y Alto son ahora inputs numéricos editables además de conservar los
+steppers. Validan 60-300 x 60-260 cm, paso 10, y reconstruyen la misma escena y
+estado compartido en Tela, Abrir y Roller. El CTA congela producto, familia y
+medidas actuales, abre un diálogo modal con el fondo completo desenfocado,
+pregunta formato y WhatsApp y recién al confirmar ejecuta POST a
+`https://www.rollershow.com.ar/api/v2/cotizar`. Usa `origen=cortina-viva` y una
+tela real representativa del catálogo para cada variante. La API no promete ni
+devuelve precio: el éxito informa contacto humano en menos de 24 horas hábiles.
+
+QA r57: Playwright recorrió 390x844 y 1440x900, los nueve cruces de modo y
+producto, edición directa 180x220, selector único y ausencia de overflow o
+errores. El POST se interceptó localmente: se verificaron URL, `tela_id`,
+medidas, formato, detalle y origen sin crear una solicitud real. CORS oficial
+respondió 204 con origen permitido para GitHub Pages.
+
+### Estado r56 preservado
 
 Los dos modos experimentales dejan de deformar la tela con transformaciones
 cinematicas. En `Abrir`, el gesto mueve un objetivo de apertura y los anclajes

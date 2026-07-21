@@ -27,17 +27,28 @@ const hint = document.getElementById('hint');
 const productLabel = document.getElementById('productLabel');
 const productName = document.getElementById('productName');
 const productColor = document.getElementById('productColor');
-const prevBtn = document.getElementById('prevBtn');
-const nextBtn = document.getElementById('nextBtn');
 const measurePanel = document.getElementById('measurePanel');
 const anchoValue = document.getElementById('anchoValue');
 const altoValue = document.getElementById('altoValue');
 const ctaQuote = document.getElementById('ctaQuote');
+const opticalButtons = [...document.querySelectorAll('[data-product]')];
+const quoteDialog = document.getElementById('quoteDialog');
+const quoteClose = document.getElementById('quoteClose');
+const quoteDone = document.getElementById('quoteDone');
+const quoteForm = document.getElementById('quoteForm');
+const quoteFormView = document.getElementById('quoteFormView');
+const quoteSuccess = document.getElementById('quoteSuccess');
+const quotePhone = document.getElementById('quotePhone');
+const quoteSubmit = document.getElementById('quoteSubmit');
+const quoteError = document.getElementById('quoteError');
+const quoteProduct = document.getElementById('quoteProduct');
+const quoteOptics = document.getElementById('quoteOptics');
+const quoteSize = document.getElementById('quoteSize');
 const muteBtn = document.getElementById('muteBtn');
 const modeSwitch = document.getElementById('modeSwitch');
 const modeButtons = [...document.querySelectorAll('[data-mode]')];
 
-const QUOTE_URL = 'https://www.rollershow.com.ar/cotizar/tradicionales';
+const QUOTE_API = 'https://www.rollershow.com.ar/api/v2/cotizar';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 const smoothstep = (a, b, value) => {
@@ -575,6 +586,37 @@ const PRODUCTS = [
 ];
 const INITIAL_PRODUCT_INDEX = 1;
 const INITIAL_PRODUCT = PRODUCTS[INITIAL_PRODUCT_INDEX];
+const PRODUCT_PRESENTATION = {
+  traditional: [
+    { name: 'Blackout', color: 'Blanco', optics: 'Bloqueo total', telaId: 2009 },
+    { name: 'Gasa', color: 'Beige', optics: 'Mayor paso de luz', telaId: 1999 },
+    { name: 'Tusor', color: 'Natural', optics: 'Luz y privacidad', telaId: 2006 },
+  ],
+  roller: [
+    { name: 'Blackout', color: 'Blanco', optics: 'Bloqueo total', telaId: 1746 },
+    { name: 'Screen', color: 'Beige', optics: 'Luz y visibilidad exterior', telaId: 1756 },
+    { name: 'Decorativa', color: 'Natural', optics: 'Luz y privacidad', telaId: 1585 },
+  ],
+};
+const presentationFamily = () => interactionMode === 'roller' ? 'roller' : 'traditional';
+const currentPresentation = () => PRODUCT_PRESENTATION[presentationFamily()][currentIndex];
+function syncProductSelector() {
+  const family = presentationFamily();
+  const labelsByIndex = PRODUCT_PRESENTATION[family];
+  opticalButtons.forEach((button) => {
+    const index = Number(button.dataset.product);
+    const item = labelsByIndex[index];
+    button.querySelector('b').textContent = item.name;
+    button.querySelector('small').textContent = item.optics;
+    button.setAttribute('aria-pressed', String(index === currentIndex));
+    button.setAttribute('aria-label', `${item.name}: ${item.optics}`);
+  });
+}
+function syncProductLabel() {
+  const item = currentPresentation();
+  productName.textContent = item.name;
+  productColor.textContent = item.color;
+}
 
 // Captura de baja resolución para transmisión difusa. Gasa y Tusor no son
 // vidrio alfa: conservan superficie, profundidad y trama, mientras el fondo se
@@ -1289,24 +1331,6 @@ function updateLightScreenPos() {
   }
 }
 
-const navLeftWorld = new THREE.Vector3();
-const navRightWorld = new THREE.Vector3();
-function updateNavScreenPosition() {
-  const r = canvas.getBoundingClientRect();
-  const y = CURTAIN_BOTTOM + H_M * 0.55;
-  navLeftWorld.set(-FULL_W * 0.61, y, CURTAIN_Z).project(camera);
-  navRightWorld.set(FULL_W * 0.61, y, CURTAIN_Z).project(camera);
-  const place = (button, point) => {
-    const edge = r.width <= 640 ? 58 : 66;
-    const x = clamp((point.x * 0.5 + 0.5) * r.width, edge, r.width - edge);
-    const top = clamp((-point.y * 0.5 + 0.5) * r.height, 74, r.height - 170);
-    button.style.left = `${x}px`;
-    button.style.top = `${top}px`;
-  };
-  place(prevBtn, navLeftWorld);
-  place(nextBtn, navRightWorld);
-}
-
 function physicalOpening(set) {
   let gap = 0;
   for (let y = 0; y <= ROWS; y++) {
@@ -1514,6 +1538,9 @@ function setInteractionMode(mode) {
   endModeGesture();
   interactionMode = mode;
   modeButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.mode === mode)));
+  syncProductLabel();
+  syncProductSelector();
+  updateQuoteSummary();
   for (const sim of activeSet.sims) {
     sim.spread = 1;
     sim.openTargetSpread = 1;
@@ -1664,7 +1691,7 @@ let OFF_DIST = winW * 0.75 + 0.6;
 const TRANSITION_SECS = 1.5;
 
 function goTo(next) {
-  if (switching) return;
+  if (switching || next === currentIndex || !PRODUCTS[next]) return;
   if (interactionMode === 'roller') {
     const to = PRODUCTS[next];
     activeSet.setMaterial(to);
@@ -1673,14 +1700,14 @@ function goTo(next) {
     active = to;
     currentIndex = next;
     lightMix = { from: to, to, t: 1 };
-    productName.textContent = to.name;
-    productColor.textContent = to.color;
-    updateQuoteLink();
+    syncProductLabel();
+    syncProductSelector();
+    updateQuoteSummary();
     applyLightMix();
     return;
   }
   switching = true;
-  prevBtn.disabled = true; nextBtn.disabled = true;
+  opticalButtons.forEach((button) => { button.disabled = true; });
   const to = PRODUCTS[next];
 
   idleSet.setMaterial(to);
@@ -1701,7 +1728,13 @@ function goTo(next) {
   transitionState = { next, to };
 
   productLabel.classList.add('switching');
-  setTimeout(() => { productName.textContent = to.name; productColor.textContent = to.color; productLabel.classList.remove('switching'); }, 380);
+  opticalButtons.forEach((button) => button.setAttribute('aria-pressed', String(Number(button.dataset.product) === next)));
+  setTimeout(() => {
+    const item = PRODUCT_PRESENTATION[presentationFamily()][next];
+    productName.textContent = item.name;
+    productColor.textContent = item.color;
+    productLabel.classList.remove('switching');
+  }, 380);
 }
 
 function stepTransition() {
@@ -1734,13 +1767,13 @@ function finishTransition() {
   lightMix = { from: ts.to, to: ts.to, t: 1 };
   transitionState = null;
   switching = false;
-  prevBtn.disabled = false; nextBtn.disabled = false;
-  updateQuoteLink();
+  opticalButtons.forEach((button) => { button.disabled = false; });
+  syncProductSelector();
+  updateQuoteSummary();
   applyLightMix();
 }
 
-prevBtn.addEventListener('click', () => goTo((currentIndex - 1 + PRODUCTS.length) % PRODUCTS.length));
-nextBtn.addEventListener('click', () => goTo((currentIndex + 1) % PRODUCTS.length));
+opticalButtons.forEach((button) => button.addEventListener('click', () => goTo(Number(button.dataset.product))));
 
 // ---------------------------------------------------------------------------
 // Steppers + cotizador RollerShow
@@ -1769,15 +1802,112 @@ function applySize() {
 document.querySelectorAll('[data-step]').forEach((btn) => {
   btn.addEventListener('click', () => {
     const dir = Number(btn.dataset.dir);
-    if (btn.dataset.step === 'ancho') { anchoCm = clamp(anchoCm + dir * 10, ANCHO_MIN, ANCHO_MAX); anchoValue.textContent = anchoCm; }
-    else { altoCm = clamp(altoCm + dir * 10, ALTO_MIN, ALTO_MAX); altoValue.textContent = altoCm; }
-    applySize();
-    updateQuoteLink();
+    if (btn.dataset.step === 'ancho') setDimensions(anchoCm + dir * 10, altoCm);
+    else setDimensions(anchoCm, altoCm + dir * 10);
   });
 });
-function updateQuoteLink() {
-  ctaQuote.href = QUOTE_URL;
+
+let sizeInputTimer = 0;
+function setDimensions(nextWidth, nextHeight, rebuild = true) {
+  anchoCm = clamp(Math.round(nextWidth / 10) * 10, ANCHO_MIN, ANCHO_MAX);
+  altoCm = clamp(Math.round(nextHeight / 10) * 10, ALTO_MIN, ALTO_MAX);
+  anchoValue.value = anchoCm;
+  altoValue.value = altoCm;
+  if (rebuild) applySize();
+  updateQuoteSummary();
 }
+function commitDimensionInputs() {
+  const width = Number(anchoValue.value);
+  const height = Number(altoValue.value);
+  setDimensions(Number.isFinite(width) ? width : anchoCm, Number.isFinite(height) ? height : altoCm);
+}
+[anchoValue, altoValue].forEach((input) => {
+  input.addEventListener('input', () => {
+    clearTimeout(sizeInputTimer);
+    const width = Number(anchoValue.value);
+    const height = Number(altoValue.value);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || !anchoValue.value || !altoValue.value) return;
+    sizeInputTimer = setTimeout(commitDimensionInputs, 160);
+  });
+  input.addEventListener('blur', commitDimensionInputs);
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') { event.preventDefault(); input.blur(); }
+  });
+});
+
+function updateQuoteSummary() {
+  if (!quoteProduct) return;
+  const item = currentPresentation();
+  const familyName = presentationFamily() === 'roller' ? 'Roller' : 'Tradicional';
+  quoteProduct.textContent = `${item.name} ${familyName}`;
+  quoteOptics.textContent = item.optics;
+  quoteSize.textContent = `${anchoCm} × ${altoCm} cm`;
+}
+function openQuoteDialog() {
+  updateQuoteSummary();
+  quoteFormView.hidden = false;
+  quoteSuccess.hidden = true;
+  quoteError.hidden = true;
+  quoteSubmit.disabled = false;
+  quoteSubmit.textContent = 'Solicitar mi cotización';
+  quoteDialog.showModal();
+  setTimeout(() => quotePhone.focus(), 180);
+}
+ctaQuote.addEventListener('click', openQuoteDialog);
+quoteClose.addEventListener('click', () => quoteDialog.close());
+quoteDone.addEventListener('click', () => quoteDialog.close());
+quoteDialog.addEventListener('click', (event) => {
+  if (event.target === quoteDialog) quoteDialog.close();
+});
+quoteForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const phone = quotePhone.value.trim();
+  if (phone.replace(/\D/g, '').length < 8) {
+    quoteError.textContent = 'Ingresá un WhatsApp válido para que podamos enviarte la cotización.';
+    quoteError.hidden = false;
+    quotePhone.focus();
+    return;
+  }
+  const item = currentPresentation();
+  const family = presentationFamily();
+  const format = new FormData(quoteForm).get('formato') || 'pdf';
+  const payload = {
+    telefono: phone,
+    tela_id: item.telaId,
+    ancho_cm: anchoCm,
+    alto_cm: altoCm,
+    formato: format,
+    detalle: `${item.name} ${family === 'roller' ? 'Roller' : 'Tradicional'} ${anchoCm} × ${altoCm} cm`,
+    origen: 'cortina-viva',
+    landing_url: location.href,
+    referer_url: document.referrer || undefined,
+  };
+  quoteError.hidden = true;
+  quoteSubmit.disabled = true;
+  quoteSubmit.textContent = 'Enviando…';
+  try {
+    const response = await fetch(QUOTE_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body?.error?.message || 'No pudimos crear la solicitud.');
+    }
+    quoteFormView.hidden = true;
+    quoteSuccess.hidden = false;
+  } catch (error) {
+    quoteError.textContent = error.message || 'No pudimos enviar la solicitud. Probá nuevamente.';
+    quoteError.hidden = false;
+    quoteSubmit.disabled = false;
+    quoteSubmit.textContent = 'Reintentar solicitud';
+  }
+});
+
+syncProductLabel();
+syncProductSelector();
+updateQuoteSummary();
 
 let revealed = false;
 function revealPanel() {
@@ -1839,7 +1969,7 @@ window.addEventListener('mousemove', (e) => {
   parTY = (e.clientY / window.innerHeight) * 2 - 1;
 });
 applyLightMix();
-updateQuoteLink();
+updateQuoteSummary();
 
 // ---------------------------------------------------------------------------
 // Loop con física en sub-pasos fijos (independiente del framerate)
@@ -1928,7 +2058,6 @@ function loop(now) {
   camera.lookAt(camLook);
 
   updateLightScreenPos();
-  updateNavScreenPosition();
   renderClothBackdrop();
   renderOcclusionPass();
   shadowFrame += 1;
@@ -2152,17 +2281,13 @@ window.__cortina = {
     active = product;
     currentIndex = next;
     lightMix = { from: product, to: product, t: 1 };
-    productName.textContent = product.name;
-    productColor.textContent = product.color;
+    syncProductLabel();
+    syncProductSelector();
+    updateQuoteSummary();
     for (let i = 0; i < 2; i++) uploadGeometry(activeSet.geos[i], activeSet.sims[i]);
     applyLightMix();
   },
   setSize: (ancho, alto) => {
-    anchoCm = clamp(ancho, ANCHO_MIN, ANCHO_MAX);
-    altoCm = clamp(alto, ALTO_MIN, ALTO_MAX);
-    anchoValue.textContent = anchoCm;
-    altoValue.textContent = altoCm;
-    applySize();
-    updateQuoteLink();
+    setDimensions(ancho, alto);
   },
 };
