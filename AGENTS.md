@@ -98,7 +98,23 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-21 (ronda r64)
+## Estado al 2026-07-21 (ronda r65)
+
+`Abrir y cerrar` conserva la apertura elegida y deja de conservar las arrugas
+accidentales del gesto. Las constraints horizontales, exclusivamente en este
+modo, corrigen sólo el eje X; antes convertían parte de la compresión lateral
+en empujes verticales que cruzaban filas y formaban bolsas. Las diagonales, la
+gravedad y el resorte del riel siguen activos, por lo que el recorrido conserva
+su retraso orgánico sin shape matching ni puntos nuevos fijados.
+
+Al terminar un drag se espera 1 s y la malla se asienta durante 680 ms hacia su
+caída local usando como referencia el `openTargetSpread` exacto de cada paño.
+No vuelve a `spread=1`, no cierra el vano y una nueva interacción interrumpe el
+asentamiento. QA extremo mobile/full redujo la deformación residual de 0.102 a
+0.0043 sin deriva de apertura (0.16 antes y después); desktop terminó en 0.0040.
+La regresión r64 de onboarding pasó completa en mobile y desktop.
+
+### Estado r64 preservado
 
 La primera visita enseña la interacción dentro de la propia escena con tres
 demostraciones causales y distintas. `Mover tela` muestra una gota, dos ondas y

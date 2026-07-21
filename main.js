@@ -959,10 +959,12 @@ function createSim(side) {
       }
     }
   };
-  sim.startRelax = () => {
+  sim.startRelax = (targetSpread = null, duration = 520) => {
     sim.relaxing = {
       startedAt: performance.now(),
       from: sim.points.map((p) => ({ x: p.x, y: p.y })),
+      targetSpread,
+      duration,
     };
   };
   sim.cancelRelax = () => { sim.relaxing = null; };
@@ -995,17 +997,28 @@ function createSim(side) {
       }
     }
     if (sim.relaxing) {
-      const progress = clamp((performance.now() - sim.relaxing.startedAt) / 520, 0, 1);
+      const progress = clamp((performance.now() - sim.relaxing.startedAt) / sim.relaxing.duration, 0, 1);
       const e = easeInOut(progress);
+      const { outer } = sim.panelRange();
+      const settleSpread = sim.relaxing.targetSpread;
       for (let i = 0; i < sim.points.length; i++) {
         const p = sim.points[i], from = sim.relaxing.from[i];
-        const targetX = sim.anchorX(p.baseX);
+        const targetX = settleSpread === null
+          ? sim.anchorX(p.baseX)
+          : sim.offsetX + outer + (p.baseX - outer) * settleSpread;
         const targetY = ROD_Y + 0.035 - p.v * H_M;
         p.x = lerp(from.x, targetX, e);
         p.y = lerp(from.y, targetY, e);
         p.px = p.x; p.py = p.y;
       }
-      if (progress >= 1) sim.relaxing = null;
+      if (progress >= 1) {
+        if (settleSpread !== null) {
+          sim.spread = settleSpread;
+          sim.openTargetSpread = settleSpread;
+          sim.openVelocity = 0;
+        }
+        sim.relaxing = null;
+      }
       return;
     }
     const dt2 = dt * dt;
@@ -1029,7 +1042,11 @@ function createSim(side) {
       for (const c of sim.constraints) {
         const p1 = sim.points[c.a], p2 = sim.points[c.b];
         const dx = p2.x - p1.x, dy = p2.y - p1.y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 0.0001;
+        // En modo Abrir, una costura horizontal regula ancho proyectado, no
+        // altura. Resolverla como distancia 2D convertia la compresion lateral
+        // en empujes verticales y terminaba cruzando filas de la tela.
+        const horizontalOpenConstraint = interactionMode === 'open' && c.axis === 'x';
+        const dist = (horizontalOpenConstraint ? Math.abs(dx) : Math.sqrt(dx * dx + dy * dy)) || 0.0001;
         // Al recoger, la longitud proyectada en X disminuye y reaparece como
         // profundidad de pliegue en uploadGeometry(). Verticalmente la tela
         // conserva el mismo largo: no se escala ni se estiran sus pixeles.
@@ -1042,7 +1059,8 @@ function createSim(side) {
         const diff = (targetLen - dist) / dist * params.stiffness * (c.factor ?? 1);
         const w1 = p1.pinned ? 0 : 1, w2 = p2.pinned ? 0 : 1;
         const weight = w1 + w2 || 1;
-        const ox = dx * diff / weight, oy = dy * diff / weight;
+        const ox = dx * diff / weight;
+        const oy = horizontalOpenConstraint ? 0 : dy * diff / weight;
         if (w1) { p1.x -= ox * w1; p1.y -= oy * w1; }
         if (w2) { p2.x += ox * w2; p2.y += oy * w2; }
       }
@@ -1844,6 +1862,7 @@ function stepOnboardingDemo(now) {
 }
 function firstInteraction() { initAudio(); revealPanel(); }
 let fabricResetTimer = 0;
+let openSettleTimer = 0;
 let modeGesture = null;
 function cancelFabricReset() {
   clearTimeout(fabricResetTimer);
@@ -1858,9 +1877,24 @@ function scheduleFabricReset() {
     for (const sim of activeSet.sims) sim.startRelax();
   }, 1000);
 }
+function cancelOpenSettle() {
+  clearTimeout(openSettleTimer);
+  openSettleTimer = 0;
+  for (const sim of activeSet.sims) sim.cancelRelax();
+}
+function scheduleOpenSettle() {
+  if (interactionMode !== 'open') return;
+  clearTimeout(openSettleTimer);
+  openSettleTimer = setTimeout(() => {
+    openSettleTimer = 0;
+    if (interactionMode !== 'open' || modeGesture) return;
+    for (const sim of activeSet.sims) sim.startRelax(sim.openTargetSpread, 680);
+  }, 1000);
+}
 function beginModeGesture(w) {
   if (!w || interactionMode === 'fabric') return;
   if (interactionMode === 'open') {
+    cancelOpenSettle();
     const sim = activeSet.sims[w.x < 0 ? 0 : 1];
     modeGesture = { mode: 'open', sim, startX: w.x, startSpread: sim.openTargetSpread };
   } else {
@@ -1879,12 +1913,18 @@ function updateModeGesture(w) {
     interactionOpenEnergy = Math.max(interactionOpenEnergy, 1 - rollerTargetDrop);
   }
 }
-function endModeGesture() { modeGesture = null; ptr.active = false; }
+function endModeGesture() {
+  const endedMode = modeGesture?.mode;
+  modeGesture = null;
+  ptr.active = false;
+  if (endedMode === 'open') scheduleOpenSettle();
+}
 function setInteractionMode(mode) {
   if (!['fabric', 'open', 'roller'].includes(mode) || mode === interactionMode || switching) return;
   cancelOnboardingDemo(true);
   cancelFabricReset();
   endModeGesture();
+  cancelOpenSettle();
   interactionMode = mode;
   if (mode !== 'roller') lastTraditionalMode = mode;
   modeButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.mode === mode)));
@@ -2069,6 +2109,7 @@ const TRANSITION_SECS = 1.5;
 
 function goTo(next) {
   if (switching || next === currentIndex || !PRODUCTS[next]) return;
+  cancelOpenSettle();
   if (interactionMode === 'roller') {
     const to = ROLLER_PRODUCTS[next];
     setRollerMaterial(to);
@@ -2155,6 +2196,7 @@ opticalButtons.forEach((button) => button.addEventListener('click', () => goTo(N
 // ---------------------------------------------------------------------------
 function applySize() {
   // la VENTANA y la cortina se reconstruyen juntas con las medidas reales
+  cancelOpenSettle();
   windowFromCm(anchoCm, altoCm);
   buildWindow();
   FULL_W = winW * 1.34;
