@@ -1028,9 +1028,12 @@ function makeRollMaterial(p) {
   return new THREE.MeshStandardMaterial({
     map: fabricTex(p.tex, true, p.repeat * 0.7, p.repeat * 0.5),
     normalMap: fabricTex(p.normal, false, p.repeat * 0.7, p.repeat * 0.5),
-    normalScale: new THREE.Vector2((p.normalScale || 0.2) * 0.72, (p.normalScale || 0.2) * 0.72),
+    // En incidencia rasante una normal fuerte convertia la trama en una hilera
+    // de destellos sobre el borde del rollo. Las capas conservan textura, pero
+    // con microrelieve mas contenido y rugosidad propia de tela comprimida.
+    normalScale: new THREE.Vector2((p.normalScale || 0.2) * 0.35, (p.normalScale || 0.2) * 0.35),
     color: p.tint,
-    roughness: p.roughness,
+    roughness: Math.max(0.94, p.roughness),
     metalness: 0,
   });
 }
