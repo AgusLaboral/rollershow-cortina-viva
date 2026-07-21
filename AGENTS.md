@@ -98,7 +98,30 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-21 (ronda r59)
+## Estado al 2026-07-21 (ronda r60)
+
+La interfaz separa tres decisiones que antes estaban mezcladas. `Tipo de
+cortina` elige Tradicional/Roller; `Cómo querés probarla` ofrece Mover tela o
+Abrir y cerrar sólo dentro de Tradicional; `Paso de luz` conserva el selector
+óptico contextual de cada familia. Al volver desde Roller, Tradicional recuerda
+su última interacción. Desktop ubica toda la configuración en el margen negro
+izquierdo y mobile en la franja superior anterior a la tela, sin tapar el
+producto ni competir con el CTA inferior.
+
+El CTA ya no abre un modal. Revela una segunda sección vertical, desplaza la
+simulación hacia arriba y lleva el foco accesible al título del presupuesto. La
+configuración elegida permanece visible en el resumen, el formulario conserva
+la API v2 y Volver restaura la escena y el foco del CTA. La cuenta regresiva del
+panel de medidas comienza después de `scene-ready`: una carga lenta ya no puede
+cancelarlo permanentemente durante el reveal atómico.
+
+QA r60: capturas Playwright en 390x844 y 1440x900; cero overflow horizontal,
+todos los targets visibles >=44 px, títulos y estados correctos, memoria de
+Abrir al pasar por Roller, cero diálogos abiertos, scroll/foco de ida y vuelta y
+consola limpia. El pase visual confirma que los controles terminan exactamente
+antes de la tela en mobile y a su izquierda en desktop.
+
+### Estado r59 preservado
 
 La proyección del piso separa luz directa de luz transmitida. Toda superficie
 de tela bloquea la componente direccional del sol, por lo que la carpintería

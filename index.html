@@ -35,6 +35,12 @@ button:focus-visible,.cta:focus-visible,a:focus-visible,input:focus-visible{outl
 @media(min-width:641px){.product-label,.product-label.raised{top:18%;bottom:auto}}
 @media(max-width:640px){.brand-header{min-height:72px;padding:20px}.brand-logo{width:min(42vw,132px)}.mode-switch{top:70px;gap:10px}.mode-switch button{min-width:54px;height:42px}.hint{left:50%;top:119px;width:max-content;max-width:88vw;transform:translateX(-50%);text-align:center;line-height:1.45}.mute-btn{top:14px;right:14px;min-width:44px;width:44px;padding:0}.mute-btn span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}.product-label{left:20px;bottom:27%}.product-label.raised{bottom:35%}.product-label .name{font-size:34px}.optical-selector{margin-top:13px}.optical-option{width:calc((100vw - 40px)/3);max-width:112px;min-height:59px;padding:7px 8px}.optical-option svg{width:27px;height:19px;margin-bottom:3px}.optical-option small{font-size:8px}.measure-panel{width:100%;margin:0;padding:14px 18px max(16px,env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(28,24,22,.86),rgba(28,24,22,.98));border-top:1px solid rgba(250,247,242,.34);gap:13px}.stepper-row{width:100%;gap:18px}.stepper{min-width:0}.controls{grid-template-columns:40px minmax(48px,1fr) 40px}.cta{width:100%;min-width:0;height:60px}.quote-shell{padding:26px 20px 22px}.quote-dialog{width:calc(100vw - 24px);max-height:calc(100svh - 24px)}}
 @media(max-width:370px){.measure-panel{padding-inline:12px}.stepper-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.controls{grid-template-columns:38px minmax(42px,1fr) 38px}.stepper button{width:38px}.optical-option b{font-size:10px}}
+/* r60: una jerarquia funcional unica, fuera del area principal de la tela. */
+html{scroll-behavior:smooth}body{overflow-x:hidden;overflow-y:auto}.experience-panel{position:absolute;left:clamp(22px,6vw,86px);top:124px;z-index:6;width:336px;color:var(--cream);user-select:none;transition:opacity var(--dur) ease}.experience-panel::before{content:"";position:absolute;inset:-34px -70px -40px -34px;z-index:-1;pointer-events:none;background:radial-gradient(ellipse at 25% 42%,rgba(12,11,10,.94),rgba(12,11,10,.62) 48%,transparent 76%)}body:not(.scene-ready) .experience-panel{opacity:0;pointer-events:none}.experience-panel .product-label,.experience-panel .product-label.raised{position:static;pointer-events:none;transition:none}.experience-panel .product-label .name{font-size:clamp(36px,4vw,54px)}.experience-panel .product-label .color{margin-top:6px}.config-group{margin-top:18px;pointer-events:auto}.config-title{display:block;margin-bottom:7px;color:rgba(250,247,242,.68);font-size:12px;font-weight:600;line-height:1.2}.control-tabs{position:relative;display:flex;align-items:center;width:100%;height:44px;border-bottom:1px solid rgba(250,247,242,.24)}.experience-panel .mode-switch{position:relative;left:auto;top:auto;z-index:auto;gap:18px;transform:none;isolation:auto}.experience-panel .mode-switch::before{content:none}.control-tabs button,.experience-panel .mode-switch button{position:relative;flex:1;min-width:0;height:44px;padding:0 8px;border:0;background:transparent;color:rgba(250,247,242,.58);font:600 12px/1 Manrope,sans-serif;text-align:left;cursor:pointer;transition:color var(--dur-fast) ease,background var(--dur-fast) ease}.control-tabs button::after,.experience-panel .mode-switch button::after{content:"";position:absolute;left:8px;right:8px;bottom:-1px;height:2px;background:var(--cream);transform:scaleX(0);transform-origin:left;transition:transform var(--dur) var(--ease)}.control-tabs button[aria-pressed="true"],.experience-panel .mode-switch button[aria-pressed="true"]{color:var(--cream);background:linear-gradient(180deg,transparent,rgba(250,247,242,.06))}.control-tabs button[aria-pressed="true"]::after,.experience-panel .mode-switch button[aria-pressed="true"]::after{transform:scaleX(1)}.roller-instruction{display:flex;align-items:center;min-height:44px;border-bottom:1px solid rgba(250,247,242,.24);color:var(--cream);font-size:12px}.roller-instruction[hidden]{display:none}.experience-panel .optical-selector{width:100%;margin-top:0}.experience-panel .optical-option{flex:1;width:auto}.experience-panel .hint{position:static;width:auto;margin-top:10px;color:rgba(250,247,242,.55);font-size:10px;line-height:1.4;text-shadow:none;transform:none}.experience-panel .hint.hidden{display:none}.quote-section{position:relative;min-height:100svh;color:var(--cream);background:linear-gradient(180deg,#0d0c0b 0%,#171310 38%,#1c1714 100%);font-family:Manrope,sans-serif;outline:0}.quote-section[hidden]{display:none}.quote-section::before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 18% 20%,rgba(184,102,44,.12),transparent 44%)}.quote-section .quote-shell{position:relative;width:min(100%,1040px);margin:0 auto;padding:clamp(76px,10vh,112px) 34px 72px}.quote-back{min-height:44px;margin-bottom:44px;padding:0;border:0;background:transparent;color:rgba(250,247,242,.7);font:600 13px/1 Manrope,sans-serif;cursor:pointer;transition:color var(--dur-fast) ease,transform var(--dur-fast) var(--ease)}.quote-back:hover{color:var(--cream);transform:translateX(-3px)}#quoteFormView{display:grid;grid-template-columns:minmax(0,.9fr) minmax(360px,1fr);gap:clamp(54px,8vw,96px);align-items:start}.quote-intro{padding-top:4px}.quote-section h2{margin-top:10px;max-width:520px;font:650 clamp(38px,5vw,62px)/.98 "Bricolage Grotesque",sans-serif;letter-spacing:-.045em;text-wrap:balance;outline:0}.quote-section .quote-summary{display:grid;gap:16px;margin:34px 0 0;padding-block:18px}.quote-section .quote-form{padding-top:4px}.quote-section .quote-success{width:min(100%,580px);min-height:0;padding-top:0}.quote-section .quote-success h2{font-size:clamp(38px,5vw,58px)}.quote-section .quote-success .quote-submit{max-width:360px;margin-top:8px}
+html{overflow-x:hidden}.quote-section .quote-note{font-size:12px;line-height:1.5}
+@media(min-width:641px){.experience-panel .product-label,.experience-panel .product-label.raised{top:auto;bottom:auto}}
+@media(max-width:640px){.experience-panel{left:16px;right:16px;top:74px;width:auto}.experience-panel::before{inset:-12px -18px -20px;background:linear-gradient(180deg,rgba(12,11,10,.88),rgba(12,11,10,.54) 72%,transparent)}.experience-panel .product-label{display:none}.config-group{display:grid;grid-template-columns:94px minmax(0,1fr);align-items:center;margin-top:5px}.config-title{margin:0;padding-right:10px;font-size:11px}.experience-panel .mode-switch{height:44px}.optics-group{display:block;margin-top:8px}.optics-group .config-title{margin-bottom:5px}.experience-panel .optical-selector{height:56px}.experience-panel .optical-option{min-height:56px;padding:6px 8px}.experience-panel .optical-option svg{display:inline-block;width:23px;height:17px;margin:0 6px 0 0;vertical-align:middle}.experience-panel .optical-option b{display:inline;font-size:10px}.experience-panel .optical-option small{display:none}.experience-panel .hint{display:none}.quote-section .quote-shell{padding:56px 20px max(40px,env(safe-area-inset-bottom))}.quote-back{margin-bottom:34px}#quoteFormView{display:block}.quote-intro{padding:0}.quote-section h2{font-size:clamp(36px,11vw,48px)}.quote-section .quote-summary{margin:26px 0 32px}.quote-section .quote-form{padding:0}.quote-section .quote-format-options{grid-template-columns:1fr}.quote-section .quote-success .quote-submit{max-width:none}}
+@media(max-width:370px){.experience-panel{left:12px;right:12px}.config-group{grid-template-columns:82px minmax(0,1fr)}.control-tabs button,.experience-panel .mode-switch button{padding-inline:5px;font-size:11px}.experience-panel .optical-option{padding-inline:5px}.experience-panel .optical-option svg{margin-right:3px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:0ms!important;animation-duration:0ms!important}}
 </style>
 </head>
@@ -42,24 +48,39 @@ button:focus-visible,.cta:focus-visible,a:focus-visible,input:focus-visible{outl
 <main class="stage">
   <canvas id="scene"></canvas>
   <header class="brand-header"><a href="https://www.rollershow.com.ar/" aria-label="RollerShow, ir al sitio"><img class="brand-logo" src="assets/brand/rollershow-logo-static-blanco.svg" alt="RollerShow"></a></header>
-  <nav class="mode-switch" id="modeSwitch" aria-label="Modo de prueba de la cortina">
-    <button type="button" data-mode="fabric" aria-pressed="true">Tela</button>
-    <button type="button" data-mode="open" aria-pressed="false">Abrir</button>
-    <button type="button" data-mode="roller" aria-pressed="false">Roller</button>
-  </nav>
-  <p class="hint" id="hint">Mové la tela con el dedo, el mouse o inclinando el teléfono</p>
+  <aside class="experience-panel" id="experiencePanel" aria-label="Configuración de la cortina">
+    <div class="product-label" id="productLabel" aria-live="polite">
+      <span class="name" id="productName">Gasa</span><span class="color" id="productColor">Beige</span>
+    </div>
+    <div class="config-group family-group">
+      <span class="config-title">Tipo de cortina</span>
+      <div class="control-tabs family-switch" id="familySwitch" role="group" aria-label="Tipo de cortina">
+        <button type="button" data-family="traditional" aria-pressed="true">Tradicional</button>
+        <button type="button" data-family="roller" aria-pressed="false">Roller</button>
+      </div>
+    </div>
+    <div class="config-group interaction-group" id="interactionGroup">
+      <span class="config-title" id="interactionTitle">Cómo querés probarla</span>
+      <div class="control-tabs mode-switch" id="modeSwitch" role="group" aria-label="Cómo probar la cortina">
+        <button type="button" data-mode="fabric" aria-pressed="true">Mover tela</button>
+        <button type="button" data-mode="open" aria-pressed="false">Abrir y cerrar</button>
+      </div>
+      <p class="roller-instruction" id="rollerInstruction" hidden>Deslizá para subir o bajar</p>
+    </div>
+    <div class="config-group optics-group">
+      <span class="config-title">Paso de luz</span>
+      <div class="optical-selector" id="opticalSelector" role="group" aria-label="Paso de luz">
+        <button class="optical-option" type="button" data-product="0" aria-pressed="false"><svg viewBox="0 0 34 22" fill="none" stroke="currentColor" stroke-width="1.35" aria-hidden="true"><circle cx="5" cy="11" r="3"/><path d="M5 3V1M5 21v-2M13 11h-2M10.7 5.3 9.2 6.8M10.7 16.7l-1.5-1.5M18 3v16M21 3v16"/><path d="M24 7h7M24 11h7M24 15h7" opacity=".22"/></svg><b>Blackout</b><small>Bloqueo total</small></button>
+        <button class="optical-option" type="button" data-product="2" aria-pressed="false"><svg viewBox="0 0 34 22" fill="none" stroke="currentColor" stroke-width="1.35" aria-hidden="true"><circle cx="5" cy="11" r="3"/><path d="M5 3V1M5 21v-2M13 11h-2M10.7 5.3 9.2 6.8M10.7 16.7l-1.5-1.5M18 3v16M21 3v16M24 11h7"/></svg><b>Tusor</b><small>Luz y privacidad</small></button>
+        <button class="optical-option" type="button" data-product="1" aria-pressed="true"><svg viewBox="0 0 34 22" fill="none" stroke="currentColor" stroke-width="1.35" aria-hidden="true"><circle cx="5" cy="11" r="3"/><path d="M5 3V1M5 21v-2M13 11h-2M10.7 5.3 9.2 6.8M10.7 16.7l-1.5-1.5M18 3v16M21 3v16M24 7h7M24 11h7M24 15h7"/></svg><b>Gasa</b><small>Mayor paso de luz</small></button>
+      </div>
+    </div>
+    <p class="hint" id="hint">Mové la tela con el dedo, el mouse o inclinando el teléfono</p>
+  </aside>
   <button class="mute-btn" id="muteBtn" aria-label="Silenciar música">
     <svg class="on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18 6a8.5 8.5 0 0 1 0 12"/></svg>
     <svg class="off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg><span>Sonido</span>
   </button>
-  <div class="product-label" id="productLabel" aria-live="polite">
-    <span class="name" id="productName">Gasa</span><span class="color" id="productColor">Beige</span>
-    <div class="optical-selector" id="opticalSelector" role="group" aria-label="Paso de luz">
-      <button class="optical-option" type="button" data-product="0" aria-pressed="false"><svg viewBox="0 0 34 22" fill="none" stroke="currentColor" stroke-width="1.35" aria-hidden="true"><circle cx="5" cy="11" r="3"/><path d="M5 3V1M5 21v-2M13 11h-2M10.7 5.3 9.2 6.8M10.7 16.7l-1.5-1.5M18 3v16M21 3v16"/><path d="M24 7h7M24 11h7M24 15h7" opacity=".22"/></svg><b>Blackout</b><small>Bloqueo total</small></button>
-      <button class="optical-option" type="button" data-product="2" aria-pressed="false"><svg viewBox="0 0 34 22" fill="none" stroke="currentColor" stroke-width="1.35" aria-hidden="true"><circle cx="5" cy="11" r="3"/><path d="M5 3V1M5 21v-2M13 11h-2M10.7 5.3 9.2 6.8M10.7 16.7l-1.5-1.5M18 3v16M21 3v16M24 11h7"/></svg><b>Tusor</b><small>Luz y privacidad</small></button>
-      <button class="optical-option" type="button" data-product="1" aria-pressed="true"><svg viewBox="0 0 34 22" fill="none" stroke="currentColor" stroke-width="1.35" aria-hidden="true"><circle cx="5" cy="11" r="3"/><path d="M5 3V1M5 21v-2M13 11h-2M10.7 5.3 9.2 6.8M10.7 16.7l-1.5-1.5M18 3v16M21 3v16M24 7h7M24 11h7M24 15h7"/></svg><b>Gasa</b><small>Mayor paso de luz</small></button>
-    </div>
-  </div>
   <div class="measure-panel" id="measurePanel">
     <div class="stepper-row">
       <div class="stepper"><label class="stepper-label" for="anchoValue"><svg class="dimension-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="8" x2="13" y2="8"/><polyline points="5.5 5.5 3 8 5.5 10.5"/><polyline points="10.5 5.5 13 8 10.5 10.5"/></svg><span>Ancho</span></label><div class="controls"><button type="button" data-step="ancho" data-dir="-1" aria-label="Reducir ancho">−</button><span class="measure"><input class="value" id="anchoValue" type="number" min="60" max="300" step="10" inputmode="numeric" value="120" aria-label="Ancho en centímetros"><span class="unit">cm</span></span><button type="button" data-step="ancho" data-dir="1" aria-label="Aumentar ancho">+</button></div></div>
@@ -68,12 +89,13 @@ button:focus-visible,.cta:focus-visible,a:focus-visible,input:focus-visible{outl
     <button class="cta" id="ctaQuote" type="button" aria-label="Cotizar esta cortina a medida"><span>Cotizá esta cortina</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m14 6 6 6-6 6"/></svg></button>
   </div>
 </main>
-<dialog class="quote-dialog" id="quoteDialog" aria-labelledby="quoteTitle">
+<section class="quote-section" id="quoteSection" aria-labelledby="quoteTitle" tabindex="-1" hidden>
   <div class="quote-shell">
-    <button class="quote-close" id="quoteClose" type="button" aria-label="Cerrar">×</button>
+    <button class="quote-back" id="quoteClose" type="button"><span aria-hidden="true">←</span> Volver a la simulación</button>
     <div id="quoteFormView">
-      <p class="quote-eyebrow">Solicitud de cotización</p><h2 id="quoteTitle">Recibí tu presupuesto</h2>
+      <div class="quote-intro"><h2 id="quoteTitle" tabindex="-1">Recibí el presupuesto de esta cortina</h2>
       <div class="quote-summary"><div><b id="quoteProduct">Gasa tradicional</b><span id="quoteOptics">Mayor paso de luz</span></div><div><b id="quoteSize">120 × 150 cm</b><span>Fabricada a medida</span></div></div>
+      </div>
       <form class="quote-form" id="quoteForm">
         <fieldset class="quote-format"><legend>¿Cómo preferís recibirla?</legend><div class="quote-format-options"><label><input type="radio" name="formato" value="pdf" checked><span>PDF por WhatsApp</span></label><label><input type="radio" name="formato" value="imagen"><span>Imagen por WhatsApp</span></label></div></fieldset>
         <label class="quote-field"><span>Tu WhatsApp</span><input id="quotePhone" name="telefono" type="tel" autocomplete="tel" inputmode="tel" enterkeyhint="send" placeholder="11 5555 5555" required></label>
@@ -82,9 +104,9 @@ button:focus-visible,.cta:focus-visible,a:focus-visible,input:focus-visible{outl
         <p class="quote-note">Un asesor de RollerShow te contacta en menos de 24 horas hábiles. La solicitud no muestra un precio automático.</p>
       </form>
     </div>
-    <div class="quote-success" id="quoteSuccess" hidden><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="24" cy="24" r="21"/><path d="m15 24 6 6 13-14"/></svg><h2>Solicitud recibida</h2><p>La configuración quedó guardada. Un asesor de RollerShow te va a contactar por WhatsApp en menos de 24 horas hábiles.</p><button class="quote-submit" id="quoteDone" type="button">Volver a la cortina</button></div>
+    <div class="quote-success" id="quoteSuccess" hidden><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="24" cy="24" r="21"/><path d="m15 24 6 6 13-14"/></svg><h2>Solicitud recibida</h2><p>La configuración quedó guardada. Un asesor de RollerShow te va a contactar por WhatsApp en menos de 24 horas hábiles.</p><button class="quote-submit" id="quoteDone" type="button">Volver a la simulación</button></div>
   </div>
-</dialog>
+</section>
 <script type="module" src="app.js"></script>
 </body>
 </html>

@@ -32,7 +32,8 @@ const anchoValue = document.getElementById('anchoValue');
 const altoValue = document.getElementById('altoValue');
 const ctaQuote = document.getElementById('ctaQuote');
 const opticalButtons = [...document.querySelectorAll('[data-product]')];
-const quoteDialog = document.getElementById('quoteDialog');
+const stage = document.querySelector('.stage');
+const quoteSection = document.getElementById('quoteSection');
 const quoteClose = document.getElementById('quoteClose');
 const quoteDone = document.getElementById('quoteDone');
 const quoteForm = document.getElementById('quoteForm');
@@ -44,9 +45,14 @@ const quoteError = document.getElementById('quoteError');
 const quoteProduct = document.getElementById('quoteProduct');
 const quoteOptics = document.getElementById('quoteOptics');
 const quoteSize = document.getElementById('quoteSize');
+const quoteTitle = document.getElementById('quoteTitle');
 const muteBtn = document.getElementById('muteBtn');
 const modeSwitch = document.getElementById('modeSwitch');
 const modeButtons = [...document.querySelectorAll('[data-mode]')];
+const familyButtons = [...document.querySelectorAll('[data-family]')];
+const interactionGroup = document.getElementById('interactionGroup');
+const interactionTitle = document.getElementById('interactionTitle');
+const rollerInstruction = document.getElementById('rollerInstruction');
 
 const QUOTE_API = 'https://www.rollershow.com.ar/api/v2/cotizar';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -1373,6 +1379,7 @@ function physicalOpening(set) {
 }
 
 let interactionMode = 'fabric';
+let lastTraditionalMode = 'fabric';
 function currentPhysicalOpening(set = activeSet) {
   return interactionMode === 'roller'
     ? clamp((1 - rollerDrop) * 0.7, 0, 0.7)
@@ -1570,7 +1577,17 @@ function setInteractionMode(mode) {
   cancelFabricReset();
   endModeGesture();
   interactionMode = mode;
+  if (mode !== 'roller') lastTraditionalMode = mode;
   modeButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.mode === mode)));
+  const isRoller = mode === 'roller';
+  familyButtons.forEach((button) => button.setAttribute(
+    'aria-pressed',
+    String(button.dataset.family === (isRoller ? 'roller' : 'traditional')),
+  ));
+  interactionGroup.classList.toggle('is-roller', isRoller);
+  interactionTitle.textContent = isRoller ? 'Cómo usarla' : 'Cómo querés probarla';
+  modeSwitch.hidden = isRoller;
+  rollerInstruction.hidden = !isRoller;
   syncProductLabel();
   syncProductSelector();
   updateQuoteSummary();
@@ -1582,7 +1599,6 @@ function setInteractionMode(mode) {
     sim.build();
   }
   idleSet.setVisible(false);
-  const isRoller = mode === 'roller';
   activeSet.setVisible(!isRoller);
   rollerMesh.visible = isRoller;
   rollerBar.visible = isRoller;
@@ -1607,6 +1623,10 @@ function setInteractionMode(mode) {
   applyLightMix();
 }
 modeButtons.forEach((button) => button.addEventListener('click', () => setInteractionMode(button.dataset.mode)));
+familyButtons.forEach((button) => button.addEventListener('click', () => {
+  const nextMode = button.dataset.family === 'roller' ? 'roller' : lastTraditionalMode;
+  setInteractionMode(nextMode);
+}));
 canvas.addEventListener('mouseenter', (e) => {
   firstInteraction();
   if (interactionMode !== 'fabric') return;
@@ -1877,22 +1897,26 @@ function updateQuoteSummary() {
   quoteOptics.textContent = item.optics;
   quoteSize.textContent = `${anchoCm} × ${altoCm} cm`;
 }
-function openQuoteDialog() {
+function openQuoteSection() {
   updateQuoteSummary();
   quoteFormView.hidden = false;
   quoteSuccess.hidden = true;
   quoteError.hidden = true;
   quoteSubmit.disabled = false;
   quoteSubmit.textContent = 'Solicitar mi cotización';
-  quoteDialog.showModal();
-  setTimeout(() => quotePhone.focus(), 180);
+  quoteSection.hidden = false;
+  requestAnimationFrame(() => {
+    quoteSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(() => quoteTitle.focus({ preventScroll: true }), reducedMotion ? 0 : 520);
+  });
 }
-ctaQuote.addEventListener('click', openQuoteDialog);
-quoteClose.addEventListener('click', () => quoteDialog.close());
-quoteDone.addEventListener('click', () => quoteDialog.close());
-quoteDialog.addEventListener('click', (event) => {
-  if (event.target === quoteDialog) quoteDialog.close();
-});
+function returnToSimulation() {
+  stage.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  setTimeout(() => ctaQuote.focus({ preventScroll: true }), reducedMotion ? 0 : 520);
+}
+ctaQuote.addEventListener('click', openQuoteSection);
+quoteClose.addEventListener('click', returnToSimulation);
+quoteDone.addEventListener('click', returnToSimulation);
 quoteForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const phone = quotePhone.value.trim();
@@ -1951,7 +1975,6 @@ function revealPanel() {
   productLabel.classList.add('raised');
   hint.classList.add('hidden');
 }
-setTimeout(revealPanel, 2600);
 
 // ---------------------------------------------------------------------------
 // Cámara en ángulo + resize
@@ -2151,6 +2174,9 @@ async function revealSceneWhenReady() {
   await new Promise(requestAnimationFrame);
   document.body.classList.add('scene-ready');
   sceneRevealAt = performance.now();
+  // El conteo empieza cuando la escena ya es visible. Antes arrancaba durante
+  // la carga y el reset atomico podia cancelar el panel para siempre.
+  setTimeout(revealPanel, 2600);
   renderer.shadowMap.autoUpdate = qualityTier === 'full';
   const startDeferred = () => {
     for (const product of PRODUCTS.filter((_, index) => index !== INITIAL_PRODUCT_INDEX)) {
