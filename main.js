@@ -899,6 +899,7 @@ function createSim(side) {
   const sim = {
     side, points: [], constraints: [], tethers: [], restSpacingX: [],
     spread: 1, openTargetSpread: 1, openVelocity: 0,
+    openRows: new Float32Array(ROWS + 1), openRowVelocities: new Float32Array(ROWS + 1),
     offsetX: 0, kinematic: null, relaxing: null,
   };
   // reposo del paño: desde el borde exterior hasta cerca del centro (gap)
@@ -916,6 +917,8 @@ function createSim(side) {
   };
   sim.build = () => {
     sim.points = []; sim.constraints = []; sim.tethers = []; sim.restSpacingX = []; sim.relaxing = null;
+    sim.openRows.fill(sim.spread);
+    sim.openRowVelocities.fill(0);
     const { outer, inner } = sim.panelRange();
     const sy = H_M / ROWS;
     const colX = [];
@@ -959,12 +962,10 @@ function createSim(side) {
       }
     }
   };
-  sim.startRelax = (targetSpread = null, duration = 520) => {
+  sim.startRelax = () => {
     sim.relaxing = {
       startedAt: performance.now(),
       from: sim.points.map((p) => ({ x: p.x, y: p.y })),
-      targetSpread,
-      duration,
     };
   };
   sim.cancelRelax = () => { sim.relaxing = null; };
@@ -995,30 +996,46 @@ function createSim(side) {
       if ((sim.spread === GATHER_SPREAD && sim.openVelocity < 0) || (sim.spread === 1 && sim.openVelocity > 0)) {
         sim.openVelocity = 0;
       }
+      // El modo de riel no reutiliza el estado libre 2D de Mover tela. Cada
+      // fila sigue el mismo spread con una respuesta algo mas lenta hacia el
+      // ruedo: conserva el latigazo organico, pero las filas permanecen
+      // ordenadas y una inversion brusca no puede almacenar cruces o bolsas.
+      sim.openRows[0] = sim.spread;
+      sim.openRowVelocities[0] = 0;
+      const rowDamping = Math.exp(-15 * dt);
+      for (let y = 1; y <= ROWS; y++) {
+        const v = y / ROWS;
+        const rowSpring = lerp(88, 48, v);
+        sim.openRowVelocities[y] = (
+          sim.openRowVelocities[y] + (sim.spread - sim.openRows[y]) * rowSpring * dt
+        ) * rowDamping;
+        sim.openRows[y] = clamp(sim.openRows[y] + sim.openRowVelocities[y] * dt, GATHER_SPREAD, 1);
+      }
+      const sy = H_M / ROWS;
+      const { outer } = sim.panelRange();
+      for (let y = 0; y <= ROWS; y++) {
+        const rowSpread = sim.openRows[y];
+        for (let x = 0; x <= COLS; x++) {
+          const p = sim.points[y * nx + x];
+          p.x = sim.offsetX + outer + (p.baseX - outer) * rowSpread;
+          p.y = ROD_Y + 0.035 - y * sy;
+          p.px = p.x; p.py = p.y;
+        }
+      }
+      return;
     }
     if (sim.relaxing) {
-      const progress = clamp((performance.now() - sim.relaxing.startedAt) / sim.relaxing.duration, 0, 1);
+      const progress = clamp((performance.now() - sim.relaxing.startedAt) / 520, 0, 1);
       const e = easeInOut(progress);
-      const { outer } = sim.panelRange();
-      const settleSpread = sim.relaxing.targetSpread;
       for (let i = 0; i < sim.points.length; i++) {
         const p = sim.points[i], from = sim.relaxing.from[i];
-        const targetX = settleSpread === null
-          ? sim.anchorX(p.baseX)
-          : sim.offsetX + outer + (p.baseX - outer) * settleSpread;
+        const targetX = sim.anchorX(p.baseX);
         const targetY = ROD_Y + 0.035 - p.v * H_M;
         p.x = lerp(from.x, targetX, e);
         p.y = lerp(from.y, targetY, e);
         p.px = p.x; p.py = p.y;
       }
-      if (progress >= 1) {
-        if (settleSpread !== null) {
-          sim.spread = settleSpread;
-          sim.openTargetSpread = settleSpread;
-          sim.openVelocity = 0;
-        }
-        sim.relaxing = null;
-      }
+      if (progress >= 1) sim.relaxing = null;
       return;
     }
     const dt2 = dt * dt;
@@ -1862,7 +1879,6 @@ function stepOnboardingDemo(now) {
 }
 function firstInteraction() { initAudio(); revealPanel(); }
 let fabricResetTimer = 0;
-let openSettleTimer = 0;
 let modeGesture = null;
 function cancelFabricReset() {
   clearTimeout(fabricResetTimer);
@@ -1877,24 +1893,9 @@ function scheduleFabricReset() {
     for (const sim of activeSet.sims) sim.startRelax();
   }, 1000);
 }
-function cancelOpenSettle() {
-  clearTimeout(openSettleTimer);
-  openSettleTimer = 0;
-  for (const sim of activeSet.sims) sim.cancelRelax();
-}
-function scheduleOpenSettle() {
-  if (interactionMode !== 'open') return;
-  clearTimeout(openSettleTimer);
-  openSettleTimer = setTimeout(() => {
-    openSettleTimer = 0;
-    if (interactionMode !== 'open' || modeGesture) return;
-    for (const sim of activeSet.sims) sim.startRelax(sim.openTargetSpread, 680);
-  }, 1000);
-}
 function beginModeGesture(w) {
   if (!w || interactionMode === 'fabric') return;
   if (interactionMode === 'open') {
-    cancelOpenSettle();
     const sim = activeSet.sims[w.x < 0 ? 0 : 1];
     modeGesture = { mode: 'open', sim, startX: w.x, startSpread: sim.openTargetSpread };
   } else {
@@ -1906,7 +1907,6 @@ function updateModeGesture(w) {
   if (modeGesture.mode === 'open') {
     const outward = modeGesture.sim.side * (w.x - modeGesture.startX);
     modeGesture.sim.openTargetSpread = clamp(modeGesture.startSpread - outward / Math.max(0.3, W_M * 0.38), GATHER_SPREAD, 1);
-    modeGesture.sim.cancelRelax();
     interactionOpenEnergy = Math.max(interactionOpenEnergy, 1 - modeGesture.sim.openTargetSpread);
   } else {
     rollerTargetDrop = clamp(modeGesture.startDrop - (w.y - modeGesture.startY) / Math.max(0.4, H_M), 0.08, 1);
@@ -1914,17 +1914,14 @@ function updateModeGesture(w) {
   }
 }
 function endModeGesture() {
-  const endedMode = modeGesture?.mode;
   modeGesture = null;
   ptr.active = false;
-  if (endedMode === 'open') scheduleOpenSettle();
 }
 function setInteractionMode(mode) {
   if (!['fabric', 'open', 'roller'].includes(mode) || mode === interactionMode || switching) return;
   cancelOnboardingDemo(true);
   cancelFabricReset();
   endModeGesture();
-  cancelOpenSettle();
   interactionMode = mode;
   if (mode !== 'roller') lastTraditionalMode = mode;
   modeButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.mode === mode)));
@@ -2109,7 +2106,6 @@ const TRANSITION_SECS = 1.5;
 
 function goTo(next) {
   if (switching || next === currentIndex || !PRODUCTS[next]) return;
-  cancelOpenSettle();
   if (interactionMode === 'roller') {
     const to = ROLLER_PRODUCTS[next];
     setRollerMaterial(to);
@@ -2196,7 +2192,6 @@ opticalButtons.forEach((button) => button.addEventListener('click', () => goTo(N
 // ---------------------------------------------------------------------------
 function applySize() {
   // la VENTANA y la cortina se reconstruyen juntas con las medidas reales
-  cancelOpenSettle();
   windowFromCm(anchoCm, altoCm);
   buildWindow();
   FULL_W = winW * 1.34;
@@ -2624,15 +2619,18 @@ window.__cortina = {
       const a = m.geometry.getAttribute('position');
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
       let restDisplacement = 0;
+      let maxVerticalDisplacement = 0;
       for (let i = 0; i < a.count; i++) {
         minX = Math.min(minX, a.getX(i)); maxX = Math.max(maxX, a.getX(i));
         minY = Math.min(minY, a.getY(i)); maxY = Math.max(maxY, a.getY(i));
         minZ = Math.min(minZ, a.getZ(i)); maxZ = Math.max(maxZ, a.getZ(i));
         const p = activeSet.sims[panelIndex].points[i];
+        const restY = ROD_Y + 0.035 - p.v * H_M;
         restDisplacement += Math.hypot(
           p.x - activeSet.sims[panelIndex].anchorX(p.baseX),
-          p.y - (ROD_Y + 0.035 - p.v * H_M),
+          p.y - restY,
         );
+        maxVerticalDisplacement = Math.max(maxVerticalDisplacement, Math.abs(p.y - restY));
       }
       let hemMinY = Infinity, hemMaxY = -Infinity;
       let hemMaxAbsZ = 0;
@@ -2690,7 +2688,7 @@ window.__cortina = {
         minX, maxX, minY, maxY, minZ, maxZ, hemMinY, hemMaxY, hemMaxAbsZ,
         outerEdgeMinX, outerEdgeMaxX, outerEdgeSpan: outerEdgeMaxX - outerEdgeMinX,
         outerEdgeCurveMax, bottomCornerDepth, hemProjectedDeviationPx, hemProjectedKinkPx,
-        meanRestDisplacement: restDisplacement / a.count,
+        meanRestDisplacement: restDisplacement / a.count, maxVerticalDisplacement,
       };
     }),
   }),

@@ -98,7 +98,22 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-21 (ronda r65)
+## Estado al 2026-07-21 (ronda r66)
+
+`Abrir y cerrar` ya no reutiliza la malla libre 2D de `Mover tela`. El arreglo
+r65 asentaba bien un gesto terminado, pero una inversión antes del segundo de
+espera cancelaba el asentamiento y transportaba la compresión vieja a la nueva
+posición. El caso abrir-cerrar-reabrir llegó a 0.365 de deformación residual.
+
+La implementación r66 conserva el resorte del riel y asigna a cada fila un
+`spread` propio que sigue la apertura con rigidez decreciente hacia el ruedo.
+Ese retraso vertical produce la curva orgánica, mientras la geometría X/Y de
+cada fila permanece ordenada: no hay cruces, bolsas acumulables, shape matching
+ni puntos extra fijados. Invertir el gesto inmediatamente deja desplazamiento
+vertical máximo de `4.44e-16` en mobile y desktop. Las pruebas r65 de posición
+retenida y r64 de onboarding también pasan completas.
+
+### Estado r65 reemplazado por el seguidor de filas r66
 
 `Abrir y cerrar` conserva la apertura elegida y deja de conservar las arrugas
 accidentales del gesto. Las constraints horizontales, exclusivamente en este
