@@ -98,7 +98,27 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-21 (ronda r60)
+## Estado al 2026-07-21 (ronda r61)
+
+En Roller, el contrapeso inferior vuelve a ser una pieza realmente interna.
+La geometría recorre todo el ancho y sigue bloqueando sombra, oclusión y haze,
+pero `colorWrite=false` impide que se pinte como una barra clara separada o
+muestre remates laterales. El usuario sólo ve el bolsillo denso de la propia
+tela, cuyo shader ya corta el frost en el ruedo.
+
+La interfaz oculta por completo `Cómo querés probarla` cuando la familia activa
+es Roller: Mover tela y Abrir y cerrar son comportamientos exclusivos de la
+cortina tradicional. El selector óptico deja de depender de pictogramas chicos;
+cada opción muestra producto y nivel causal en texto: Sin paso, Paso medio o
+Paso alto. La misma gramática se conserva en Tradicional y Roller.
+
+QA r61: Playwright recorrió 390x844 lite y 1440x900 full. Verificó contrapeso
+interno opaco sin escritura de color, cobertura completa del ruedo, grupo de
+interacción oculto únicamente en Roller, restauración al volver a Tradicional,
+selectores contextuales correctos, targets de 68 px, cero overflow y consola
+limpia. Las capturas finales están en `_scratch/audit-r61/`.
+
+### Estado r60 preservado
 
 La interfaz separa tres decisiones que antes estaban mezcladas. `Tipo de
 cortina` elige Tradicional/Roller; `Cómo querés probarla` ofrece Mover tela o
