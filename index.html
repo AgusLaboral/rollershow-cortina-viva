@@ -43,11 +43,23 @@ html{overflow-x:hidden}.quote-section .quote-note{font-size:12px;line-height:1.5
 @media(max-width:370px){.experience-panel{left:12px;right:12px}.config-group{grid-template-columns:82px minmax(0,1fr)}.control-tabs button,.experience-panel .mode-switch button{padding-inline:5px;font-size:11px}.experience-panel .optical-option{padding-inline:5px}.experience-panel .optical-option svg{margin-right:3px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:0ms!important;animation-duration:0ms!important}}
 .interaction-group[hidden]{display:none!important}.experience-panel .optical-selector{height:auto}.experience-panel .optical-option{min-height:68px;padding:10px 10px 9px}.experience-panel .optical-option svg{display:none}.experience-panel .optical-option b{font-size:13px;line-height:1.2}.experience-panel .optical-option small{display:block;margin-top:5px;font-size:11px;line-height:1.2;color:rgba(250,247,242,.72)}
+.gesture-demo{position:absolute;inset:0;z-index:5;overflow:hidden;pointer-events:none;color:var(--cream);font-family:Manrope,sans-serif}.gesture-demo[hidden]{display:none}.gesture-anchor{position:absolute;left:var(--gesture-x);top:var(--gesture-y);width:1px;height:1px;will-change:transform,opacity}.gesture-drop{position:absolute;left:-5px;top:-6px;width:10px;height:13px;border-radius:55% 55% 62% 62%;background:linear-gradient(155deg,#fff 8%,#f3ddc4 62%,#b9794d);filter:drop-shadow(0 0 8px rgba(255,225,192,.72));transform-origin:center bottom;opacity:0}.gesture-ripple{position:absolute;left:-27px;top:-27px;width:54px;height:54px;border:1.5px solid rgba(45,30,22,.62);border-radius:50%;box-shadow:0 0 0 1px rgba(255,244,229,.82),0 0 18px rgba(255,219,180,.34);opacity:.18;will-change:transform,opacity}.gesture-ripple.r2{width:38px;height:38px;left:-19px;top:-19px;border-color:rgba(255,244,229,.8);box-shadow:0 0 0 1px rgba(38,26,20,.48),0 0 12px rgba(255,219,180,.24)}.gesture-finger{position:absolute;left:-18px;top:-13px;width:38px;height:46px;color:#fff;filter:drop-shadow(0 3px 9px rgba(0,0,0,.78));opacity:.86;will-change:transform,opacity}.gesture-finger svg{display:block;width:100%;height:100%;overflow:visible}.gesture-label{position:absolute;left:0;top:39px;width:max-content;max-width:190px;transform:translateX(-50%);font-size:12px;font-weight:650;line-height:1.2;letter-spacing:-.01em;text-align:center;text-shadow:0 2px 4px #000,0 0 10px #000,0 0 24px #000;opacity:.9;will-change:transform,opacity}.gesture-path{position:absolute;left:-42px;top:5px;width:84px;height:1px;background:linear-gradient(90deg,transparent,rgba(255,242,225,.78),transparent);transform-origin:center;opacity:0;will-change:transform,opacity}.gesture-demo[data-mode="roller"] .gesture-path{transform:rotate(90deg)}
+@media(max-width:640px){.gesture-label{font-size:11px;max-width:150px}.gesture-finger{width:34px;height:42px}.gesture-path{width:68px;left:-34px}}
 </style>
 </head>
 <body>
 <main class="stage">
   <canvas id="scene"></canvas>
+  <div class="gesture-demo" id="gestureDemo" hidden aria-hidden="true">
+    <div class="gesture-anchor" id="gestureAnchor">
+      <span class="gesture-drop" id="gestureDrop"></span>
+      <span class="gesture-ripple" id="gestureRipple"></span>
+      <span class="gesture-ripple r2" id="gestureRipple2"></span>
+      <span class="gesture-path" id="gesturePath"></span>
+      <span class="gesture-finger" id="gestureFinger"><svg viewBox="0 0 40 48" fill="rgba(20,18,17,.72)" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 25V9.5a3.5 3.5 0 0 1 7 0V22m0-7.5a3.5 3.5 0 0 1 7 0V25m0-7a3.5 3.5 0 0 1 7 0v10.5c0 8.2-5.5 14.5-13.5 14.5h-2.2c-5.2 0-8.2-2.2-10.7-6.1L6.8 29a3.7 3.7 0 0 1 6.2-4l4 5.1"/><path d="M13 8.5a9 9 0 0 1 15.5-4.8" opacity=".72"/></svg></span>
+      <span class="gesture-label" id="gestureLabel"></span>
+    </div>
+  </div>
   <header class="brand-header"><a href="https://www.rollershow.com.ar/" aria-label="RollerShow, ir al sitio"><img class="brand-logo" src="assets/brand/rollershow-logo-static-blanco.svg" alt="RollerShow"></a></header>
   <aside class="experience-panel" id="experiencePanel" aria-label="Configuración de la cortina">
     <div class="product-label" id="productLabel" aria-live="polite">

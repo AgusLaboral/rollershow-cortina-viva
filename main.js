@@ -53,6 +53,14 @@ const familyButtons = [...document.querySelectorAll('[data-family]')];
 const interactionGroup = document.getElementById('interactionGroup');
 const interactionTitle = document.getElementById('interactionTitle');
 const rollerInstruction = document.getElementById('rollerInstruction');
+const gestureDemo = document.getElementById('gestureDemo');
+const gestureAnchor = document.getElementById('gestureAnchor');
+const gestureDrop = document.getElementById('gestureDrop');
+const gestureRipple = document.getElementById('gestureRipple');
+const gestureRipple2 = document.getElementById('gestureRipple2');
+const gestureFinger = document.getElementById('gestureFinger');
+const gestureLabel = document.getElementById('gestureLabel');
+const gesturePath = document.getElementById('gesturePath');
 
 const QUOTE_API = 'https://www.rollershow.com.ar/api/v2/cotizar';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -1056,6 +1064,7 @@ function createSim(side) {
 }
 
 function makePanelGeometry() { return new THREE.PlaneGeometry(1, 1, COLS, ROWS); }
+let clothIntroRipple = null;
 function uploadGeometry(geo, sim) {
   const pos = geo.attributes.position, uv = geo.attributes.uv;
   for (let y = 0; y <= ROWS; y++) {
@@ -1076,7 +1085,19 @@ function uploadGeometry(geo, sim) {
       const dynamicDepth = compress * (product?.compressionDepth ?? 0.08);
       const wave = Math.sin(p.u * Math.PI * 2 * PLEAT_COUNT)
         * (baseDepth + dynamicDepth);
-      pos.setXYZ(i, p.x, p.y, wave);
+      let introWave = 0;
+      if (clothIntroRipple?.sim === sim) {
+        const age = clothIntroRipple.age;
+        if (age >= 0 && age < 1.35) {
+          const distance = Math.hypot(p.x - clothIntroRipple.x, p.y - clothIntroRipple.y);
+          const front = age * 0.92;
+          const ring = Math.exp(-Math.pow((distance - front) * 8.5, 2));
+          const edgeFade = smoothstep(0.04, 0.18, p.v) * (1 - smoothstep(0.88, 1, p.v));
+          introWave = Math.sin((distance - front) * 28) * ring * edgeFade
+            * 0.012 * Math.exp(-age * 0.72);
+        }
+      }
+      pos.setXYZ(i, p.x, p.y, wave + introWave);
       uv.setXY(i, p.u, 1 - p.v);
     }
   }
@@ -1643,6 +1664,184 @@ function worldToClient(x, y, z = CURTAIN_Z) {
     y: (-point.y * 0.5 + 0.5) * r.height + r.top,
   };
 }
+const ONBOARDING_STORAGE_PREFIX = 'rollershow-cortina-viva:onboarding:v1:';
+const onboardingShown = new Set();
+const onboardingTriedSession = new Set();
+const onboardingAnimations = [];
+let onboardingDemo = null;
+let onboardingTimer = 0;
+let onboardingFinishTimer = 0;
+function onboardingWasTried(mode) {
+  try { return localStorage.getItem(`${ONBOARDING_STORAGE_PREFIX}${mode}`) === '1'; }
+  catch { return false; }
+}
+function setOnboardingTried(mode) {
+  try { localStorage.setItem(`${ONBOARDING_STORAGE_PREFIX}${mode}`, '1'); }
+  catch { /* La experiencia sigue funcionando si el storage esta bloqueado. */ }
+}
+function stopGuideAnimations() {
+  while (onboardingAnimations.length) onboardingAnimations.pop().cancel();
+}
+function finishOnboardingDemo(settle = true) {
+  clearTimeout(onboardingFinishTimer);
+  onboardingFinishTimer = 0;
+  stopGuideAnimations();
+  if (onboardingDemo && settle) {
+    if (onboardingDemo.mode === 'open') {
+      for (const sim of activeSet.sims) sim.openTargetSpread = 1;
+    } else if (onboardingDemo.mode === 'roller') {
+      rollerTargetDrop = 1;
+    } else {
+      ptr.active = false;
+      for (const sim of activeSet.sims) sim.startRelax();
+    }
+  }
+  clothIntroRipple = null;
+  onboardingDemo = null;
+  gestureDemo.hidden = true;
+}
+function cancelOnboardingDemo(settle = true) {
+  clearTimeout(onboardingTimer);
+  onboardingTimer = 0;
+  if (onboardingDemo) finishOnboardingDemo(settle);
+}
+function markModeTried(mode = interactionMode) {
+  if (onboardingTriedSession.has(mode)) return;
+  onboardingTriedSession.add(mode);
+  onboardingShown.add(mode);
+  setOnboardingTried(mode);
+  cancelOnboardingDemo(false);
+}
+function guideAnimate(element, keyframes, options) {
+  const animation = element.animate(keyframes, { fill: 'both', ...options });
+  onboardingAnimations.push(animation);
+  return animation;
+}
+function showOnboardingGuide(mode, target) {
+  stopGuideAnimations();
+  gestureDemo.hidden = false;
+  gestureDemo.dataset.mode = mode;
+  gestureDemo.style.setProperty('--gesture-x', `${target.x}px`);
+  gestureDemo.style.setProperty('--gesture-y', `${target.y}px`);
+  gestureLabel.textContent = mode === 'fabric'
+    ? 'Tocá y mové la tela'
+    : (mode === 'open' ? 'Deslizá para abrir' : 'Deslizá para subir');
+
+  const fadeLabel = [
+    { opacity: 0, transform: 'translate(-50%, 5px)' },
+    { opacity: 1, transform: 'translate(-50%, 0)' },
+    { opacity: 1, transform: 'translate(-50%, 0)', offset: 0.78 },
+    { opacity: 0, transform: 'translate(-50%, -3px)' },
+  ];
+  guideAnimate(gestureLabel, fadeLabel, { duration: 1900, delay: mode === 'fabric' ? 780 : 300, easing: 'cubic-bezier(.23,1,.32,1)' });
+  guideAnimate(gesturePath,
+    [{ opacity: 0, transform: mode === 'roller' ? 'rotate(90deg) scaleX(.25)' : 'scaleX(.25)' },
+      { opacity: 0.78, transform: mode === 'roller' ? 'rotate(90deg) scaleX(1)' : 'scaleX(1)' },
+      { opacity: 0, transform: mode === 'roller' ? 'rotate(90deg) scaleX(1.12)' : 'scaleX(1.12)' }],
+    { duration: 1700, delay: mode === 'fabric' ? 800 : 360, easing: 'cubic-bezier(.23,1,.32,1)' });
+
+  if (mode === 'fabric') {
+    guideAnimate(gestureDrop,
+      [{ opacity: 0, transform: 'translateY(-68px) scale(.55)' },
+        { opacity: 1, offset: 0.18 },
+        { opacity: 1, transform: 'translateY(0) scale(1)', offset: 0.86 },
+        { opacity: 0, transform: 'translateY(4px) scale(.65)' }],
+      { duration: 620, delay: 110, easing: 'cubic-bezier(.32,0,.67,0)' });
+    for (const [element, delay, scale] of [[gestureRipple, 510, 2.45], [gestureRipple2, 650, 2.05]]) {
+      guideAnimate(element,
+        [{ opacity: 0.88, transform: 'scale(.18)' }, { opacity: 0.42, offset: 0.48 },
+          { opacity: 0, transform: `scale(${scale})` }],
+        { duration: 920, delay, easing: 'cubic-bezier(.23,1,.32,1)' });
+    }
+    guideAnimate(gestureFinger,
+      [{ opacity: 0, transform: 'translate(0,8px) scale(.92)' },
+        { opacity: 1, transform: 'translate(0,0) scale(1)', offset: 0.18 },
+        { opacity: 1, transform: 'translate(62px,-5px) scale(1)', offset: 0.62 },
+        { opacity: 0.95, transform: 'translate(8px,2px) scale(1)', offset: 0.86 },
+        { opacity: 0, transform: 'translate(8px,2px) scale(.96)' }],
+      { duration: 1850, delay: 730, easing: 'cubic-bezier(.645,.045,.355,1)' });
+  } else if (mode === 'open') {
+    guideAnimate(gestureRipple,
+      [{ opacity: 0, transform: 'scale(.3)' }, { opacity: 0.72, offset: 0.2 },
+        { opacity: 0, transform: 'scale(1.45)' }],
+      { duration: 620, delay: 250, easing: 'cubic-bezier(.23,1,.32,1)' });
+    guideAnimate(gestureFinger,
+      [{ opacity: 0, transform: 'translate(0,5px) scale(.94)' },
+        { opacity: 1, transform: 'translate(0,0) scale(1)', offset: 0.12 },
+        { opacity: 1, transform: 'translate(78px,0) scale(1)', offset: 0.46 },
+        { opacity: 1, transform: 'translate(78px,0) scale(1)', offset: 0.58 },
+        { opacity: 1, transform: 'translate(0,0) scale(1)', offset: 0.9 },
+        { opacity: 0, transform: 'translate(0,0) scale(.96)' }],
+      { duration: 2850, delay: 220, easing: 'cubic-bezier(.645,.045,.355,1)' });
+  } else {
+    guideAnimate(gestureRipple,
+      [{ opacity: 0, transform: 'scale(.3)' }, { opacity: 0.72, offset: 0.2 },
+        { opacity: 0, transform: 'scale(1.45)' }],
+      { duration: 620, delay: 250, easing: 'cubic-bezier(.23,1,.32,1)' });
+    guideAnimate(gestureFinger,
+      [{ opacity: 0, transform: 'translate(0,8px) scale(.94)' },
+        { opacity: 1, transform: 'translate(0,0) scale(1)', offset: 0.12 },
+        { opacity: 1, transform: 'translate(0,-112px) scale(1)', offset: 0.46 },
+        { opacity: 1, transform: 'translate(0,-112px) scale(1)', offset: 0.58 },
+        { opacity: 1, transform: 'translate(0,0) scale(1)', offset: 0.9 },
+        { opacity: 0, transform: 'translate(0,0) scale(.96)' }],
+      { duration: 2850, delay: 220, easing: 'cubic-bezier(.645,.045,.355,1)' });
+  }
+}
+function startOnboardingDemo(mode, force = false) {
+  if (switching || interactionMode !== mode || (!force && (onboardingShown.has(mode) || onboardingWasTried(mode)))) return false;
+  cancelOnboardingDemo();
+  onboardingShown.add(mode);
+  const centerY = CURTAIN_BOTTOM + H_M * 0.54;
+  const targetWorld = mode === 'roller'
+    ? { x: 0, y: CURTAIN_BOTTOM + H_M * 0.36 }
+    : { x: W_M * (mode === 'open' ? 0.05 : 0.15), y: centerY };
+  const targetClient = worldToClient(targetWorld.x, targetWorld.y);
+  onboardingDemo = {
+    mode, startedAt: performance.now(), targetX: targetWorld.x, targetY: targetWorld.y,
+    rippleStarted: false,
+  };
+  showOnboardingGuide(mode, targetClient);
+  onboardingFinishTimer = setTimeout(() => finishOnboardingDemo(true), mode === 'fabric' ? 3300 : 3500);
+  return true;
+}
+function scheduleOnboardingDemo(mode, delay = 420) {
+  clearTimeout(onboardingTimer);
+  if (onboardingShown.has(mode) || onboardingWasTried(mode)) return;
+  onboardingTimer = setTimeout(() => {
+    onboardingTimer = 0;
+    startOnboardingDemo(mode);
+  }, delay);
+}
+function stepOnboardingDemo(now) {
+  if (!onboardingDemo || onboardingDemo.mode !== interactionMode) return;
+  const t = (now - onboardingDemo.startedAt) / 1000;
+  if (onboardingDemo.mode === 'fabric') {
+    if (!onboardingDemo.rippleStarted && t >= 0.35) {
+      onboardingDemo.rippleStarted = true;
+      clothIntroRipple = {
+        sim: activeSet.sims[1], x: onboardingDemo.targetX, y: onboardingDemo.targetY,
+        startedAt: performance.now(), age: 0,
+      };
+    }
+    if (clothIntroRipple) clothIntroRipple.age = (now - clothIntroRipple.startedAt) / 1000;
+    // El dedo ilustra el gesto, pero no reutiliza el drag lateral: en equipos
+    // lentos un frame salteado podia acumular impulso y abrir todo el pano.
+    // La demostracion fisica vive exclusivamente en la onda Z localizada.
+    ptr.active = false;
+  } else {
+    const opening = t < 0.42 ? 0
+      : (t < 1.48 ? easeInOut((t - 0.42) / 1.06)
+        : (t < 1.92 ? 1 : 1 - easeInOut(clamp((t - 1.92) / 1.08, 0, 1))));
+    if (onboardingDemo.mode === 'open') {
+      const spread = lerp(1, 0.62, opening);
+      for (const sim of activeSet.sims) sim.openTargetSpread = spread;
+    } else {
+      rollerTargetDrop = lerp(1, 0.58, opening);
+    }
+    interactionOpenEnergy = Math.max(interactionOpenEnergy, opening * 0.8);
+  }
+}
 function firstInteraction() { initAudio(); revealPanel(); }
 let fabricResetTimer = 0;
 let modeGesture = null;
@@ -1683,6 +1882,7 @@ function updateModeGesture(w) {
 function endModeGesture() { modeGesture = null; ptr.active = false; }
 function setInteractionMode(mode) {
   if (!['fabric', 'open', 'roller'].includes(mode) || mode === interactionMode || switching) return;
+  cancelOnboardingDemo(true);
   cancelFabricReset();
   endModeGesture();
   interactionMode = mode;
@@ -1740,6 +1940,7 @@ function setInteractionMode(mode) {
   clearTimeout(setInteractionMode.hintTimer);
   setInteractionMode.hintTimer = setTimeout(() => hint.classList.add('hidden'), 2200);
   applyLightMix();
+  scheduleOnboardingDemo(mode, 520);
 }
 modeButtons.forEach((button) => button.addEventListener('click', () => setInteractionMode(button.dataset.mode)));
 familyButtons.forEach((button) => button.addEventListener('click', () => {
@@ -1755,6 +1956,7 @@ canvas.addEventListener('mouseenter', (e) => {
 canvas.addEventListener('mousedown', (e) => {
   if (interactionMode === 'fabric') return;
   firstInteraction();
+  markModeTried(interactionMode);
   beginModeGesture(pointerToWorld(e.clientX, e.clientY));
 });
 canvas.addEventListener('mousemove', (e) => {
@@ -1764,6 +1966,7 @@ canvas.addEventListener('mousemove', (e) => {
     return;
   }
   if (w) {
+    markModeTried('fabric');
     cancelFabricReset();
     exciteAtmosphere(w.x, w.y, w.x - ptr.x);
     ptr.px = ptr.x; ptr.py = ptr.y; ptr.x = w.x; ptr.y = w.y; ptr.active = true;
@@ -1780,6 +1983,7 @@ window.addEventListener('mouseup', endModeGesture);
 canvas.addEventListener('touchstart', (e) => {
   firstInteraction();
   ensureMotionPermission();
+  markModeTried(interactionMode);
   const t = e.touches[0], w = pointerToWorld(t.clientX, t.clientY);
   if (interactionMode === 'fabric') {
     if (w) { cancelFabricReset(); ptr.x = ptr.px = w.x; ptr.y = ptr.py = w.y; ptr.active = true; }
@@ -2188,6 +2392,7 @@ function loop(now) {
   last = now;
   if (document.hidden) { requestAnimationFrame(loop); return; }
   probePerformance(elapsed);
+  stepOnboardingDemo(now);
   stepRoller(elapsed);
   interactionOpenEnergy += (0 - interactionOpenEnergy) * 0.035;
   const steps = Math.min(MAX_SUBSTEPS, Math.max(1, Math.round(elapsed / PHYS_DT)));
@@ -2236,7 +2441,7 @@ function loop(now) {
   renderOcclusionPass();
   shadowFrame += 1;
   const relaxing = activeSet.sims.some((sim) => sim.relaxing);
-  const dynamicShadow = ptr.active || Boolean(modeGesture) || relaxing || switching || Math.abs(tiltX) > 0.03 || Math.abs(tiltGravity) > 0.01;
+  const dynamicShadow = ptr.active || Boolean(modeGesture) || Boolean(onboardingDemo) || relaxing || switching || Math.abs(tiltX) > 0.03 || Math.abs(tiltGravity) > 0.01;
   if (!renderer.shadowMap.autoUpdate) renderer.shadowMap.needsUpdate = dynamicShadow || shadowFrame % 2 === 0;
   composer.render();
   if (resolveFirstFrame) {
@@ -2291,6 +2496,10 @@ async function revealSceneWhenReady() {
   await new Promise(requestAnimationFrame);
   document.body.classList.add('scene-ready');
   sceneRevealAt = performance.now();
+  // En el primer reveal se deja estabilizar bloom y los render targets. En
+  // mobile lento, arrancar la guia en el mismo segundo podia capturar un frame
+  // intermedio sobreexpuesto aunque la escena final ya estuviera lista.
+  scheduleOnboardingDemo(interactionMode, 1400);
   // El conteo empieza cuando la escena ya es visible. Antes arrancaba durante
   // la carga y el reset atomico podia cancelar el panel para siempre.
   setTimeout(revealPanel, 2600);
@@ -2325,6 +2534,20 @@ window.__cortina = {
     ),
     qualityTier, performanceMode,
     sceneReady: document.body.classList.contains('scene-ready'),
+    onboarding: {
+      active: onboardingDemo?.mode || null,
+      elapsed: onboardingDemo ? (performance.now() - onboardingDemo.startedAt) / 1000 : null,
+      visible: !gestureDemo.hidden,
+      shown: [...onboardingShown],
+      tried: ['fabric', 'open', 'roller'].filter(onboardingWasTried),
+      rippleActive: Boolean(clothIntroRipple),
+      guide: {
+        x: gestureAnchor.getBoundingClientRect().x,
+        y: gestureAnchor.getBoundingClientRect().y,
+        fingerOpacity: Number(getComputedStyle(gestureFinger).opacity),
+        labelOpacity: Number(getComputedStyle(gestureLabel).opacity),
+      },
+    },
     adaptiveRenderScale, renderDpr: renderer.getPixelRatio(),
     qualitySignals: { memoryKnown, deviceMemory, cpuCores, saveData, highDensityMobile, constrainedDevice },
     motion: {
@@ -2440,6 +2663,23 @@ window.__cortina = {
     }
   },
   setMode: setInteractionMode,
+  playOnboarding: (mode = interactionMode) => startOnboardingDemo(mode, true),
+  seekOnboarding: (seconds) => {
+    if (!onboardingDemo) return false;
+    const elapsed = Math.max(0, Number(seconds) || 0);
+    onboardingDemo.startedAt = performance.now() - elapsed * 1000;
+    for (const animation of onboardingAnimations) animation.currentTime = elapsed * 1000;
+    stepOnboardingDemo(performance.now());
+    return true;
+  },
+  resetOnboarding: () => {
+    cancelOnboardingDemo(true);
+    onboardingShown.clear();
+    onboardingTriedSession.clear();
+    try {
+      for (const mode of ['fabric', 'open', 'roller']) localStorage.removeItem(`${ONBOARDING_STORAGE_PREFIX}${mode}`);
+    } catch { /* QA sigue disponible aunque storage este bloqueado. */ }
+  },
   screenToWorld: (x, y) => {
     const point = pointerToWorld(x, y);
     return point ? { x: point.x, y: point.y } : null;

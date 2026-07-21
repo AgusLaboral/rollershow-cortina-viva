@@ -98,7 +98,25 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-21 (ronda r63)
+## Estado al 2026-07-21 (ronda r64)
+
+La primera visita enseña la interacción dentro de la propia escena con tres
+demostraciones causales y distintas. `Mover tela` muestra una gota, dos ondas y
+un gesto lateral; la tela recibe solamente una onda Z localizada de 12 mm, sin
+inyectar un arrastre falso en la física. `Abrir y cerrar` lleva ambos paños a
+0.62 de apertura mediante sus resortes existentes y los devuelve al reposo.
+`Roller` recorre verticalmente de 1 a 0.58 y vuelve usando el smooth-damp real.
+La guía superpuesta anima sólo `transform` y `opacity`, no captura eventos y no
+agrega dependencias, videos, texturas ni requests.
+
+El arranque espera 1.4 s después de `scene-ready`, para no competir con la
+composición inicial mobile; los cambios de modo esperan 520 ms. Cada capacidad
+se muestra como máximo una vez por visita y su primer gesto manual cancela la
+guía y guarda una clave independiente en `localStorage`. Desde entonces esa
+demostración no reaparece en ese navegador. Los tres estados se inspeccionan y
+pueden forzarse de forma determinista desde `window.__cortina` para QA.
+
+### Estado r63 preservado
 
 La jerarquía óptica Tradicional vuelve a separarse de forma inequívoca por
 pedido explícito de Agus. Blackout permanece en transmisión 0 y bloqueo 1.
