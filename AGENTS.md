@@ -98,7 +98,21 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-21 (ronda r67)
+## Estado al 2026-07-21 (ronda r68)
+
+Ninguna tela Roller puede mostrar estampas, reticulas, bandas ni dibujos. Los
+perfiles procedurales `blackout`, `screen` y `decorative` usan el mismo blanco
+calido con albedo apenas irregular y normal maps de ruido periodico estocastico:
+la periodicidad cierra la costura tecnica del rollo, pero no construye motivos
+visibles. `weaveStrength=0` impide que el shader reincorpore moteado macro.
+
+Screen usa `frostMix=0.88` y `frostLod=3.2`: la carpinteria exterior sigue
+siendo reconocible, pero aparece claramente difusa. Decorativa usa
+`frostMix=0.76` y `frostLod=5.9`: conserva masas de luz sin permitir lectura
+del exterior. Blackout mantiene frost y transmision en cero. No tocar con esta
+ronda el motor optico aprobado de Gasa/Tusor tradicionales.
+
+### Estado r67 preservado
 
 La experiencia tradicional comienza en `Abrir y cerrar`, no en `Mover tela`.
 El estado inicial del motor, el control seleccionado, la ayuda contextual y la

@@ -600,17 +600,17 @@ const PRODUCTS = [
 const ROLLER_WARM_WHITE = 0xfff1df;
 const ROLLER_PRODUCTS = [
   { ...PRODUCTS[0], name: 'Blackout', color: 'Blanco cálido', rollerTexture: 'blackout',
-    frostMix: 0, frostLod: 0, weaveStrength: 0.42, foldShade: 0.12,
+    frostMix: 0, frostLod: 0, weaveStrength: 0, foldShade: 0.12,
     backfaceCap: 0.2, shadowBlock: 1, tint: ROLLER_WARM_WHITE, sunFactor: 0,
-    radianceCap: 0.36, normalScale: 0.1, repeat: 3.2, roughness: 0.93 },
+    radianceCap: 0.36, normalScale: 0.065, repeat: 2, roughness: 0.93 },
   { ...PRODUCTS[1], name: 'Screen', color: 'Blanco cálido', rollerTexture: 'screen',
-    frostMix: 0.82, frostLod: 0.72, weaveStrength: 0.38, foldShade: 0.06,
+    frostMix: 0.88, frostLod: 3.2, weaveStrength: 0, foldShade: 0.06,
     backfaceCap: 0.92, shadowBlock: 0.2, tint: ROLLER_WARM_WHITE, sunFactor: 0.82,
-    radianceCap: 0.61, normalScale: 0.16, repeat: 4.2, roughness: 0.9 },
+    radianceCap: 0.61, normalScale: 0.08, repeat: 2, roughness: 0.9 },
   { ...PRODUCTS[2], name: 'Decorativa', color: 'Blanco cálido', rollerTexture: 'decorative',
-    frostMix: 0.74, frostLod: 5.9, weaveStrength: 0.32, foldShade: 0.1,
+    frostMix: 0.76, frostLod: 5.9, weaveStrength: 0, foldShade: 0.1,
     backfaceCap: 0.68, shadowBlock: 0.56, tint: ROLLER_WARM_WHITE, sunFactor: 0.46,
-    radianceCap: 0.5, normalScale: 0.18, repeat: 3.4, roughness: 0.94 },
+    radianceCap: 0.5, normalScale: 0.09, repeat: 2, roughness: 0.94 },
 ];
 const INITIAL_PRODUCT_INDEX = 1;
 const INITIAL_PRODUCT = PRODUCTS[INITIAL_PRODUCT_INDEX];
@@ -680,41 +680,54 @@ const rollerTextureCache = new Map();
 const rollerTextureFieldCache = new Map();
 const ROLLER_TEXTURE_SIZE = 256;
 const clampByte = (value) => Math.max(0, Math.min(255, Math.round(value)));
+function rollerNoiseHash(x, y, seed, period) {
+  const px = ((x % period) + period) % period;
+  const py = ((y % period) + period) % period;
+  let h = Math.imul(px + seed * 1013, 374761393) + Math.imul(py + seed * 1999, 668265263);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+}
+function rollerValueNoise(nx, ny, cells, seed) {
+  const px = nx * cells;
+  const py = ny * cells;
+  const x0 = Math.floor(px);
+  const y0 = Math.floor(py);
+  const fx = px - x0;
+  const fy = py - y0;
+  const sx = fx * fx * (3 - 2 * fx);
+  const sy = fy * fy * (3 - 2 * fy);
+  const a = rollerNoiseHash(x0, y0, seed, cells);
+  const b = rollerNoiseHash(x0 + 1, y0, seed, cells);
+  const c = rollerNoiseHash(x0, y0 + 1, seed, cells);
+  const d = rollerNoiseHash(x0 + 1, y0 + 1, seed, cells);
+  return (a + (b - a) * sx) * (1 - sy) + (c + (d - c) * sx) * sy;
+}
 function rollerTextureFields(profile) {
   if (rollerTextureFieldCache.has(profile)) return rollerTextureFieldCache.get(profile);
   const size = ROLLER_TEXTURE_SIZE;
   const height = new Float32Array(size * size);
   const shade = new Float32Array(size * size);
-  const tau = Math.PI * 2;
+  // Las Roller no llevan estampas ni tramas dibujadas. La materialidad vive en
+  // variaciones estocasticas de fibra y microrelieve, periodicas solo en los
+  // bordes para no producir costuras al envolver el rollo.
+  const textureProfile = {
+    blackout: { seed: 11, fineCells: 92, fine: 0.12, mediumCells: 31, medium: 0.035, softCells: 9, soft: 0.01, albedo: 0.012 },
+    screen: { seed: 29, fineCells: 112, fine: 0.15, mediumCells: 43, medium: 0.045, softCells: 13, soft: 0.012, albedo: 0.014 },
+    decorative: { seed: 47, fineCells: 76, fine: 0.1, mediumCells: 23, medium: 0.07, softCells: 7, soft: 0.025, albedo: 0.022 },
+  }[profile];
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const i = y * size + x;
       const nx = x / size;
       const ny = y / size;
-      const micro = Math.sin(tau * (nx * 31 + ny * 17)) * 0.5
-        + Math.sin(tau * (nx * 53 - ny * 29)) * 0.25;
-      if (profile === 'screen') {
-        const cell = 10;
-        const dx = Math.min(x % cell, cell - (x % cell));
-        const dy = Math.min(y % cell, cell - (y % cell));
-        const warp = Math.exp(-(dx * dx) / 3.1);
-        const weft = Math.exp(-(dy * dy) / 3.1);
-        const fiber = Math.max(warp, weft);
-        const crossing = warp * weft;
-        height[i] = 0.08 + fiber * 0.7 + crossing * 0.18;
-        shade[i] = -0.045 + fiber * 0.06 + crossing * 0.012 + micro * 0.008;
-      } else if (profile === 'decorative') {
-        const warp = Math.pow(0.5 + 0.5 * Math.cos(tau * nx * 24), 4);
-        const weft = Math.pow(0.5 + 0.5 * Math.cos(tau * ny * 18), 5);
-        const slub = Math.sin(tau * (ny * 5 + Math.sin(tau * nx * 3) * 0.18));
-        height[i] = 0.25 + Math.max(warp * 0.72, weft * 0.62) + slub * 0.035;
-        shade[i] = warp * 0.026 + weft * 0.022 + slub * 0.018 + micro * 0.009;
-      } else {
-        const warp = Math.sin(tau * nx * 42);
-        const weft = Math.sin(tau * ny * 46);
-        height[i] = 0.5 + warp * 0.12 + weft * 0.1 + micro * 0.035;
-        shade[i] = warp * 0.012 + weft * 0.01 + micro * 0.006;
-      }
+      const fine = rollerValueNoise(nx, ny, textureProfile.fineCells, textureProfile.seed);
+      const medium = rollerValueNoise(nx, ny, textureProfile.mediumCells, textureProfile.seed + 17);
+      const soft = rollerValueNoise(nx, ny, textureProfile.softCells, textureProfile.seed + 37);
+      height[i] = 0.5
+        + (fine - 0.5) * textureProfile.fine
+        + (medium - 0.5) * textureProfile.medium
+        + (soft - 0.5) * textureProfile.soft;
+      shade[i] = ((medium - 0.5) * 0.78 + (fine - 0.5) * 0.22) * textureProfile.albedo;
     }
   }
   const fields = { height, shade };
@@ -2614,6 +2627,8 @@ window.__cortina = {
       frostMix: active.frostMix, frostLod: active.frostLod,
       shadowBlock: active.shadowBlock, sunFactor: active.sunFactor,
       rollerTexture: active.rollerTexture || null,
+      weaveStrength: active.weaveStrength,
+      textureRepeat: active.repeat,
     },
     panels: activeSet.meshes.map((m, panelIndex) => {
       const a = m.geometry.getAttribute('position');
