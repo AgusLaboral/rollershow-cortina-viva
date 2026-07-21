@@ -591,14 +591,14 @@ const INITIAL_PRODUCT_INDEX = 1;
 const INITIAL_PRODUCT = PRODUCTS[INITIAL_PRODUCT_INDEX];
 const PRODUCT_PRESENTATION = {
   traditional: [
-    { name: 'Blackout', color: 'Blanco', optics: 'Bloqueo total', telaId: 2009 },
-    { name: 'Gasa', color: 'Beige', optics: 'Mayor paso de luz', telaId: 1999 },
-    { name: 'Tusor', color: 'Natural', optics: 'Luz y privacidad', telaId: 2006 },
+    { name: 'Blackout', color: 'Blanco', optics: 'Sin paso', telaId: 2009 },
+    { name: 'Gasa', color: 'Beige', optics: 'Paso alto', telaId: 1999 },
+    { name: 'Tusor', color: 'Natural', optics: 'Paso medio', telaId: 2006 },
   ],
   roller: [
-    { name: 'Blackout', color: 'Blanco', optics: 'Bloqueo total', telaId: 1746 },
-    { name: 'Screen', color: 'Beige', optics: 'Luz y visibilidad exterior', telaId: 1756 },
-    { name: 'Decorativa', color: 'Natural', optics: 'Luz y privacidad', telaId: 1585 },
+    { name: 'Blackout', color: 'Blanco', optics: 'Sin paso', telaId: 1746 },
+    { name: 'Screen', color: 'Beige', optics: 'Paso alto', telaId: 1756 },
+    { name: 'Decorativa', color: 'Natural', optics: 'Paso medio', telaId: 1585 },
   ],
 };
 const presentationFamily = () => interactionMode === 'roller' ? 'roller' : 'traditional';
@@ -2201,6 +2201,8 @@ window.__cortina = {
       height: rollerWeight.scale.y,
       y: rollerWeight.position.y,
       opaque: rollerWeight.material.userData.shadowBlock === 1,
+      internal: rollerWeight.material.userData.internalCounterweight === true,
+      colorWrite: rollerWeight.material.colorWrite,
     },
     rollerUvSpan: Math.abs(
       rollerGeo.attributes.uv.getY(0)
