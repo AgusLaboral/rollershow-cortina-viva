@@ -98,7 +98,22 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-21 (ronda r62)
+## Estado al 2026-07-21 (ronda r63)
+
+La jerarquía óptica Tradicional vuelve a separarse de forma inequívoca por
+pedido explícito de Agus. Blackout permanece en transmisión 0 y bloqueo 1.
+Tusor baja a `frostMix 0.42` / `sunFactor 0.38`, sube a `frostLod 4.65` y
+`shadowBlock 0.64`: conserva cuerpo textil y luz difusa, pero revela mucho
+menos la ventana. Gasa sube moderadamente a `frostMix 0.79` / `sunFactor 0.88`,
+baja su LOD a 3.05 mobile y 3.75 desktop y bloquea sólo 0.14: la carpintería se
+lee mejor detrás de la trama sin convertirla en vidrio ni usar alpha.
+
+QA r63: comparación controlada de Blackout, Tusor y Gasa con idéntica medida,
+abertura y cámara en 390x844 lite y 1440x900 full. Energía de fuente medida:
+0.01 / 0.387 / 0.881; haze: 0.003 / 0.153 / 0.727. La inspección visual confirma
+tres niveles claros y consola limpia. Capturas en `_scratch/audit-r63/`.
+
+### Estado r62 preservado
 
 Roller deja de reutilizar los mapas de Gasa y Tusor. Los tres productos usan
 una misma base blanco cálido y tres superficies procedurales tileables de

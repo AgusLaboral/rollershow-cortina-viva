@@ -582,10 +582,10 @@ const PRODUCTS = [
     opacity: 1, frostMix: 0, frostLod: 0, weaveStrength: 0, foldShade: 0.34, backfaceCap: 0.18, castShadow: true, shadowBlock: 1, tint: 0xffffff, sunFactor: 0, backlight: 0, radianceCap: 0.34, normalScale: 0.14, repeat: 1.6 },
   { name: 'Gasa', color: 'Beige', tex: 'img/fabric/gasa.jpg', normal: 'img/fabric/gasa-nor.webp',
     stiffness: 0.87, gravity: 6.2, friction: 0.972, influence: 0.6, dragCap: 0.075, dragResponse: 0.9, pleatDepth: 0.075, compressionDepth: 0.08, roughness: 0.88,
-    opacity: 1, frostMix: 0.74, frostLod: isMobile ? 3.28 : 4.1, weaveStrength: 0.64, foldShade: 0.14, backfaceCap: 1, castShadow: true, shadowBlock: 0.18, tint: 0xfffbf5, sunFactor: 0.84, backlight: 0, radianceCap: 0.62, normalScale: 0.17, repeat: 2.35 },
+    opacity: 1, frostMix: 0.79, frostLod: isMobile ? 3.05 : 3.75, weaveStrength: 0.64, foldShade: 0.14, backfaceCap: 1, castShadow: true, shadowBlock: 0.14, tint: 0xfffbf5, sunFactor: 0.88, backlight: 0, radianceCap: 0.64, normalScale: 0.17, repeat: 2.35 },
   { name: 'Tusor', color: 'Natural', tex: 'img/fabric/tusor-albedo.jpg', normal: 'img/fabric/tusor-nor.webp',
     stiffness: 0.9, gravity: 6.9, friction: 0.975, influence: 0.56, dragCap: 0.066, dragResponse: 0.72, pleatDepth: 0.09, compressionDepth: 0.065, roughness: 0.92,
-    opacity: 1, frostMix: 0.5, frostLod: 4.2, weaveStrength: 0.68, foldShade: 0.26, backfaceCap: 0.72, castShadow: true, shadowBlock: 0.56, tint: 0xfff8ed, sunFactor: 0.46, backlight: 0, radianceCap: 0.48, normalScale: 0.24, repeat: 2.05 },
+    opacity: 1, frostMix: 0.42, frostLod: 4.65, weaveStrength: 0.68, foldShade: 0.26, backfaceCap: 0.72, castShadow: true, shadowBlock: 0.64, tint: 0xfff8ed, sunFactor: 0.38, backlight: 0, radianceCap: 0.45, normalScale: 0.24, repeat: 2.05 },
 ];
 // Roller is a separate material family. It shares one warm-white base but
 // never inherits Gasa/Tusor maps or optics from the traditional collection.
