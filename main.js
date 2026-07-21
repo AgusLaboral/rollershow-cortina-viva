@@ -1543,8 +1543,8 @@ function physicalOpening(set) {
   return clamp((gap / (ROWS + 1)) / Math.max(W_M, 0.001), 0, 0.7);
 }
 
-let interactionMode = 'fabric';
-let lastTraditionalMode = 'fabric';
+let interactionMode = 'open';
+let lastTraditionalMode = 'open';
 function currentPhysicalOpening(set = activeSet) {
   return interactionMode === 'roller'
     ? clamp((1 - rollerDrop) * 0.7, 0, 0.7)

@@ -98,7 +98,16 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-21 (ronda r66)
+## Estado al 2026-07-21 (ronda r67)
+
+La experiencia tradicional comienza en `Abrir y cerrar`, no en `Mover tela`.
+El estado inicial del motor, el control seleccionado, la ayuda contextual y la
+demostracion de onboarding deben coincidir. Al volver desde Roller, Tradicional
+recuerda `Abrir y cerrar` como ultimo modo. El cotizador reutiliza sin redibujar
+los SVG de PDF e Imagen de `rollershow-src/src/pages/landing-cotizador.astro`;
+ambos conservan palabra visible, foco de teclado y seleccion nativa por radio.
+
+### Estado r66 preservado
 
 `Abrir y cerrar` ya no reutiliza la malla libre 2D de `Mover tela`. El arreglo
 r65 asentaba bien un gesto terminado, pero una inversión antes del segundo de
