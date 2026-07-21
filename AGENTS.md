@@ -98,7 +98,30 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-21 (ronda r61)
+## Estado al 2026-07-21 (ronda r62)
+
+Roller deja de reutilizar los mapas de Gasa y Tusor. Los tres productos usan
+una misma base blanco cálido y tres superficies procedurales tileables de
+256x256: trama cerrada fina en Blackout, tejido denso con slub en Decorativa y
+malla abierta fina en Screen. Al generarse sincrónica y localmente no agregan
+requests, binarios ni un estado de carga parcial; albedo y normal se cachean.
+
+La óptica Roller también queda separada de Tradicional. Blackout usa frost 0,
+transmisión 0 y bloqueo 1. Decorativa usa LOD 5.9: deja pasar luminosidad y
+siluetas amplias, pero elimina la lectura de la carpintería. Screen usa LOD
+0.72 y transmisión alta: la estructura exterior sigue reconocible a través de
+la microtrama. Los tres conservan exactamente el mismo `ROLLER_WARM_WHITE`.
+Cambiar de familia restaura el producto tradicional equivalente y sus valores
+aprobados; no se recalibró Gasa, Tusor ni el Blackout tradicional.
+
+QA r62: Playwright recorrió los tres perfiles en 390x844 lite y 1440x900 full,
+consola limpia y retorno Roller a Tradicional correcto. Los estados medidos
+fueron Blackout 0/1, Decorativa 0.46/0.56 y Screen 0.82/0.20 para transmisión y
+bloqueo respectivamente. La inspección visual confirma opacidad total, sombra
+difusa sin vista y vista exterior legible en ese orden. Capturas en
+`_scratch/audit-r62/`.
+
+### Estado r61 preservado
 
 En Roller, el contrapeso inferior vuelve a ser una pieza realmente interna.
 La geometría recorre todo el ancho y sigue bloqueando sombra, oclusión y haze,

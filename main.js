@@ -587,6 +587,23 @@ const PRODUCTS = [
     stiffness: 0.9, gravity: 6.9, friction: 0.975, influence: 0.56, dragCap: 0.066, dragResponse: 0.72, pleatDepth: 0.09, compressionDepth: 0.065, roughness: 0.92,
     opacity: 1, frostMix: 0.5, frostLod: 4.2, weaveStrength: 0.68, foldShade: 0.26, backfaceCap: 0.72, castShadow: true, shadowBlock: 0.56, tint: 0xfff8ed, sunFactor: 0.46, backlight: 0, radianceCap: 0.48, normalScale: 0.24, repeat: 2.05 },
 ];
+// Roller is a separate material family. It shares one warm-white base but
+// never inherits Gasa/Tusor maps or optics from the traditional collection.
+const ROLLER_WARM_WHITE = 0xfff1df;
+const ROLLER_PRODUCTS = [
+  { ...PRODUCTS[0], name: 'Blackout', color: 'Blanco cálido', rollerTexture: 'blackout',
+    frostMix: 0, frostLod: 0, weaveStrength: 0.42, foldShade: 0.12,
+    backfaceCap: 0.2, shadowBlock: 1, tint: ROLLER_WARM_WHITE, sunFactor: 0,
+    radianceCap: 0.36, normalScale: 0.1, repeat: 3.2, roughness: 0.93 },
+  { ...PRODUCTS[1], name: 'Screen', color: 'Blanco cálido', rollerTexture: 'screen',
+    frostMix: 0.82, frostLod: 0.72, weaveStrength: 0.38, foldShade: 0.06,
+    backfaceCap: 0.92, shadowBlock: 0.2, tint: ROLLER_WARM_WHITE, sunFactor: 0.82,
+    radianceCap: 0.61, normalScale: 0.16, repeat: 4.2, roughness: 0.9 },
+  { ...PRODUCTS[2], name: 'Decorativa', color: 'Blanco cálido', rollerTexture: 'decorative',
+    frostMix: 0.74, frostLod: 5.9, weaveStrength: 0.32, foldShade: 0.1,
+    backfaceCap: 0.68, shadowBlock: 0.56, tint: ROLLER_WARM_WHITE, sunFactor: 0.46,
+    radianceCap: 0.5, normalScale: 0.18, repeat: 3.4, roughness: 0.94 },
+];
 const INITIAL_PRODUCT_INDEX = 1;
 const INITIAL_PRODUCT = PRODUCTS[INITIAL_PRODUCT_INDEX];
 const PRODUCT_PRESENTATION = {
@@ -596,9 +613,9 @@ const PRODUCT_PRESENTATION = {
     { name: 'Tusor', color: 'Natural', optics: 'Paso medio', telaId: 2006 },
   ],
   roller: [
-    { name: 'Blackout', color: 'Blanco', optics: 'Sin paso', telaId: 1746 },
-    { name: 'Screen', color: 'Beige', optics: 'Paso alto', telaId: 1756 },
-    { name: 'Decorativa', color: 'Natural', optics: 'Paso medio', telaId: 1585 },
+    { name: 'Blackout', color: 'Blanco cálido', optics: 'Sin paso', telaId: 1746 },
+    { name: 'Screen', color: 'Blanco cálido', optics: 'Paso alto', telaId: 1756 },
+    { name: 'Decorativa', color: 'Blanco cálido', optics: 'Paso medio', telaId: 1585 },
   ],
 };
 const presentationFamily = () => interactionMode === 'roller' ? 'roller' : 'traditional';
@@ -651,14 +668,107 @@ function fabricTex(src, srgb, rep, repY) {
   fabricTextureCache.set(key, t);
   return t;
 }
-function makeCurtainMaterial(p) {
-  const colorMap = fabricTex(p.tex, true, p.repeat * 0.55, p.repeat);
+const rollerTextureCache = new Map();
+const rollerTextureFieldCache = new Map();
+const ROLLER_TEXTURE_SIZE = 256;
+const clampByte = (value) => Math.max(0, Math.min(255, Math.round(value)));
+function rollerTextureFields(profile) {
+  if (rollerTextureFieldCache.has(profile)) return rollerTextureFieldCache.get(profile);
+  const size = ROLLER_TEXTURE_SIZE;
+  const height = new Float32Array(size * size);
+  const shade = new Float32Array(size * size);
+  const tau = Math.PI * 2;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = y * size + x;
+      const nx = x / size;
+      const ny = y / size;
+      const micro = Math.sin(tau * (nx * 31 + ny * 17)) * 0.5
+        + Math.sin(tau * (nx * 53 - ny * 29)) * 0.25;
+      if (profile === 'screen') {
+        const cell = 10;
+        const dx = Math.min(x % cell, cell - (x % cell));
+        const dy = Math.min(y % cell, cell - (y % cell));
+        const warp = Math.exp(-(dx * dx) / 3.1);
+        const weft = Math.exp(-(dy * dy) / 3.1);
+        const fiber = Math.max(warp, weft);
+        const crossing = warp * weft;
+        height[i] = 0.08 + fiber * 0.7 + crossing * 0.18;
+        shade[i] = -0.045 + fiber * 0.06 + crossing * 0.012 + micro * 0.008;
+      } else if (profile === 'decorative') {
+        const warp = Math.pow(0.5 + 0.5 * Math.cos(tau * nx * 24), 4);
+        const weft = Math.pow(0.5 + 0.5 * Math.cos(tau * ny * 18), 5);
+        const slub = Math.sin(tau * (ny * 5 + Math.sin(tau * nx * 3) * 0.18));
+        height[i] = 0.25 + Math.max(warp * 0.72, weft * 0.62) + slub * 0.035;
+        shade[i] = warp * 0.026 + weft * 0.022 + slub * 0.018 + micro * 0.009;
+      } else {
+        const warp = Math.sin(tau * nx * 42);
+        const weft = Math.sin(tau * ny * 46);
+        height[i] = 0.5 + warp * 0.12 + weft * 0.1 + micro * 0.035;
+        shade[i] = warp * 0.012 + weft * 0.01 + micro * 0.006;
+      }
+    }
+  }
+  const fields = { height, shade };
+  rollerTextureFieldCache.set(profile, fields);
+  return fields;
+}
+function rollerFabricTex(profile, normal, rep, repY) {
+  const key = `${profile}|${normal ? 'normal' : 'albedo'}|${rep}|${repY ?? rep}`;
+  if (rollerTextureCache.has(key)) return rollerTextureCache.get(key);
+  const size = ROLLER_TEXTURE_SIZE;
+  const { height, shade } = rollerTextureFields(profile);
+  const data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = y * size + x;
+      const o = i * 4;
+      if (normal) {
+        const left = height[y * size + ((x - 1 + size) % size)];
+        const right = height[y * size + ((x + 1) % size)];
+        const down = height[((y - 1 + size) % size) * size + x];
+        const up = height[((y + 1) % size) * size + x];
+        const sx = (left - right) * 1.55;
+        const sy = (down - up) * 1.55;
+        const inv = 1 / Math.hypot(sx, sy, 1);
+        data[o] = clampByte((sx * inv * 0.5 + 0.5) * 255);
+        data[o + 1] = clampByte((sy * inv * 0.5 + 0.5) * 255);
+        data[o + 2] = clampByte((inv * 0.5 + 0.5) * 255);
+      } else {
+        const value = clampByte(222 + shade[i] * 255);
+        data[o] = value;
+        data[o + 1] = value;
+        data[o + 2] = value;
+      }
+      data[o + 3] = 255;
+    }
+  }
+  const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(rep, repY ?? rep);
+  texture.generateMipmaps = true;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), qualityTier === 'full' ? 8 : 2);
+  if (!normal) texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+  rollerTextureCache.set(key, texture);
+  return texture;
+}
+function rollerMaterialMaps(p, xScale = 0.55, yScale = 1) {
+  return {
+    color: rollerFabricTex(p.rollerTexture, false, p.repeat * xScale, p.repeat * yScale),
+    normal: rollerFabricTex(p.rollerTexture, true, p.repeat * xScale, p.repeat * yScale),
+  };
+}
+function makeCurtainMaterial(p, maps = null) {
+  const colorMap = maps?.color ?? fabricTex(p.tex, true, p.repeat * 0.55, p.repeat);
   const material = new THREE.MeshStandardMaterial({
     map: colorMap,
     alphaMap: null,
     alphaTest: 0,
     alphaHash: false,
-    normalMap: fabricTex(p.normal, false, p.repeat * 0.55, p.repeat),
+    normalMap: maps?.normal ?? fabricTex(p.normal, false, p.repeat * 0.55, p.repeat),
     normalScale: new THREE.Vector2(p.normalScale || 0.2, p.normalScale || 0.2),
     color: p.tint,
     emissive: 0x000000,
@@ -1029,18 +1139,15 @@ const ROLLER_COLS = qualityTier === 'full' ? 40 : 24;
 const ROLLER_ROWS = qualityTier === 'full' ? 32 : 20;
 const rollerGeo = new THREE.PlaneGeometry(1, 1, ROLLER_COLS, ROLLER_ROWS);
 function makeRollerSheetMaterial(product) {
-  // Una Roller queda tensada y casi plana. Reducir únicamente su radio de
-  // difusión evita sumar una segunda grilla fantasma sobre la sombra real del
-  // marco, sin cambiar el motor frost aprobado de las cortinas tradicionales.
+  // La Roller queda tensada y usa su propio mapa y perfil óptico. El motor
+  // frost es compartido, pero sus parámetros ya no derivan de Gasa/Tusor.
   return makeCurtainMaterial({
     ...product,
-    frostLod: product.frostLod * 0.72,
-    foldShade: product.foldShade * 0.35,
     denseHem: 1,
-  });
+  }, rollerMaterialMaps(product));
 }
-const rollerMesh = new THREE.Mesh(rollerGeo, makeRollerSheetMaterial(INITIAL_PRODUCT));
-rollerMesh.customDepthMaterial = makeShadowMaterial(INITIAL_PRODUCT);
+const rollerMesh = new THREE.Mesh(rollerGeo, makeRollerSheetMaterial(ROLLER_PRODUCTS[INITIAL_PRODUCT_INDEX]));
+rollerMesh.customDepthMaterial = makeShadowMaterial(ROLLER_PRODUCTS[INITIAL_PRODUCT_INDEX]);
 rollerMesh.position.z = CURTAIN_Z;
 rollerMesh.renderOrder = 3;
 // La captura frost ya contiene el marco detrás. Recibir además su shadow map
@@ -1065,7 +1172,7 @@ scene.add(rollerBar);
 // Es una pieza densa en todos los productos; nunca usa frost ni translucidez.
 const rollerWeight = new THREE.Mesh(
   new THREE.BoxGeometry(1, 1, 1),
-  makeRollerWeightMaterial(INITIAL_PRODUCT),
+  makeRollerWeightMaterial(ROLLER_PRODUCTS[INITIAL_PRODUCT_INDEX]),
 );
 rollerWeight.material.userData.shadowBlock = 1;
 rollerWeight.castShadow = true;
@@ -1085,9 +1192,10 @@ const ROLLER_CORE_RADIUS = 0.032;
 // fibra: convierte longitud guardada en seccion de rollo con conservacion de area.
 const ROLLER_EFFECTIVE_THICKNESS = 0.0052;
 function makeRollMaterial(p) {
+  const maps = rollerMaterialMaps(p, 0.7, 0.5);
   return new THREE.MeshStandardMaterial({
-    map: fabricTex(p.tex, true, p.repeat * 0.7, p.repeat * 0.5),
-    normalMap: fabricTex(p.normal, false, p.repeat * 0.7, p.repeat * 0.5),
+    map: maps.color,
+    normalMap: maps.normal,
     // En incidencia rasante una normal fuerte convertia la trama en una hilera
     // de destellos sobre el borde del rollo. Las capas conservan textura, pero
     // con microrelieve mas contenido y rugosidad propia de tela comprimida.
@@ -1610,8 +1718,17 @@ function setInteractionMode(mode) {
     rollerDrop = 1;
     rollerTargetDrop = 1;
     rollerVelocity = 0;
-    setRollerMaterial(active);
+    const rollerProduct = ROLLER_PRODUCTS[currentIndex];
+    active = rollerProduct;
+    lightMix = { from: rollerProduct, to: rollerProduct, t: 1 };
+    setRollerMaterial(rollerProduct);
     uploadRollerGeometry();
+  } else {
+    const traditionalProduct = PRODUCTS[currentIndex];
+    active = traditionalProduct;
+    activeSet.setMaterial(traditionalProduct);
+    activeSet.setCastShadow(traditionalProduct.castShadow);
+    lightMix = { from: traditionalProduct, to: traditionalProduct, t: 1 };
   }
   const messages = {
     fabric: 'Mové la tela. Vuelve a su caída natural después de un segundo.',
@@ -1749,9 +1866,7 @@ const TRANSITION_SECS = 1.5;
 function goTo(next) {
   if (switching || next === currentIndex || !PRODUCTS[next]) return;
   if (interactionMode === 'roller') {
-    const to = PRODUCTS[next];
-    activeSet.setMaterial(to);
-    activeSet.setCastShadow(to.castShadow);
+    const to = ROLLER_PRODUCTS[next];
     setRollerMaterial(to);
     active = to;
     currentIndex = next;
@@ -2234,7 +2349,12 @@ window.__cortina = {
     panelSpreads: activeSet.sims.map((sim) => sim.spread),
     panelSpreadTargets: activeSet.sims.map((sim) => sim.openTargetSpread),
     panelOpenVelocities: activeSet.sims.map((sim) => sim.openVelocity),
-    productName: PRODUCTS[currentIndex].name, productColor: PRODUCTS[currentIndex].color,
+    productName: currentPresentation().name, productColor: currentPresentation().color,
+    opticalProfile: {
+      frostMix: active.frostMix, frostLod: active.frostLod,
+      shadowBlock: active.shadowBlock, sunFactor: active.sunFactor,
+      rollerTexture: active.rollerTexture || null,
+    },
     panels: activeSet.meshes.map((m, panelIndex) => {
       const a = m.geometry.getAttribute('position');
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
@@ -2344,10 +2464,11 @@ window.__cortina = {
   injectOrientation: (beta, gamma) => onOrientation({ beta, gamma }),
   jumpToProduct: (next) => {
     if (next === currentIndex || next < 0 || next >= PRODUCTS.length) return;
-    const product = PRODUCTS[next];
-    activeSet.setMaterial(product);
-    activeSet.setCastShadow(product.castShadow);
-    setRollerMaterial(product);
+    const traditionalProduct = PRODUCTS[next];
+    const product = interactionMode === 'roller' ? ROLLER_PRODUCTS[next] : traditionalProduct;
+    activeSet.setMaterial(traditionalProduct);
+    activeSet.setCastShadow(traditionalProduct.castShadow);
+    setRollerMaterial(ROLLER_PRODUCTS[next]);
     for (const sim of activeSet.sims) {
       sim.spread = 1;
       sim.openTargetSpread = 1;
