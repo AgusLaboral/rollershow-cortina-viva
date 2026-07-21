@@ -746,7 +746,11 @@ const gatheredU = (u) => u + (PLEAT_AMPLITUDE / (PLEAT_COUNT * Math.PI * 2)) * M
 
 // side: -1 = paño izquierdo (cuelga desde el borde izquierdo hacia el centro)
 function createSim(side) {
-  const sim = { side, points: [], constraints: [], tethers: [], restSpacingX: [], spread: 1, offsetX: 0, kinematic: null, relaxing: null };
+  const sim = {
+    side, points: [], constraints: [], tethers: [], restSpacingX: [],
+    spread: 1, openTargetSpread: 1, openVelocity: 0,
+    offsetX: 0, kinematic: null, relaxing: null,
+  };
   // reposo del paño: desde el borde exterior hasta cerca del centro (gap)
   sim.panelRange = () => {
     const half = W_M / 2;
@@ -773,23 +777,33 @@ function createSim(side) {
         sim.points.push({ x: px, y: py, px, py, baseX: colX[x], pinned: y === 0, u: x / COLS, v: y / ROWS });
         const i = sim.points.length - 1;
         if (y > 0) sim.tethers.push({ anchor: x, point: i, maxLen: y * sy });
-        if (x > 0) sim.constraints.push({ a: i - 1, b: i, len: sim.restSpacingX[x - 1] });
-        if (y > 0) sim.constraints.push({ a: i - (COLS + 1), b: i, len: sy });
+        if (x > 0) sim.constraints.push({
+          a: i - 1, b: i, len: sim.restSpacingX[x - 1], axis: 'x', xLen: sim.restSpacingX[x - 1], yLen: 0,
+        });
+        if (y > 0) sim.constraints.push({
+          a: i - (COLS + 1), b: i, len: sy, axis: 'y', xLen: 0, yLen: sy,
+        });
         if (x > 0 && y > 0) {
           const diag = Math.hypot(sim.restSpacingX[x - 1], sy);
-          sim.constraints.push({ a: i - (COLS + 2), b: i, len: diag, factor: 0.42 });
+          sim.constraints.push({
+            a: i - (COLS + 2), b: i, len: diag, axis: 'diag', xLen: sim.restSpacingX[x - 1], yLen: sy, factor: 0.42,
+          });
         }
         if (x < COLS && y > 0) {
           const diag = Math.hypot(sim.restSpacingX[x], sy);
-          sim.constraints.push({ a: i - COLS, b: i, len: diag, factor: 0.42 });
+          sim.constraints.push({
+            a: i - COLS, b: i, len: diag, axis: 'diag', xLen: sim.restSpacingX[x], yLen: sy, factor: 0.42,
+          });
         }
         if (x > 1) sim.constraints.push({
           a: i - 2, b: i,
           len: sim.restSpacingX[x - 2] + sim.restSpacingX[x - 1],
+          axis: 'x', xLen: sim.restSpacingX[x - 2] + sim.restSpacingX[x - 1], yLen: 0,
           factor: 0.13,
         });
         if (y > 1) sim.constraints.push({
           a: i - 2 * (COLS + 1), b: i, len: sy * 2,
+          axis: 'y', xLen: 0, yLen: sy * 2,
           factor: 0.1,
         });
       }
@@ -819,12 +833,16 @@ function createSim(side) {
       return;
     }
     if (interactionMode === 'open') {
-      for (const p of sim.points) {
-        p.x = sim.anchorX(p.baseX);
-        p.y = ROD_Y + 0.035 - p.v * H_M;
-        p.px = p.x; p.py = p.y;
+      // El riel responde al dedo con un resorte amortiguado. El cuerpo no se
+      // teletransporta: los anclajes superiores arrastran la tela y cada fila
+      // llega con un pequeno retraso, como una cortina recogida de verdad.
+      const spring = 82;
+      const damping = Math.exp(-13.5 * dt);
+      sim.openVelocity = (sim.openVelocity + (sim.openTargetSpread - sim.spread) * spring * dt) * damping;
+      sim.spread = clamp(sim.spread + sim.openVelocity * dt, GATHER_SPREAD, 1);
+      if ((sim.spread === GATHER_SPREAD && sim.openVelocity < 0) || (sim.spread === 1 && sim.openVelocity > 0)) {
+        sim.openVelocity = 0;
       }
-      return;
     }
     if (sim.relaxing) {
       const progress = clamp((performance.now() - sim.relaxing.startedAt) / 520, 0, 1);
@@ -862,7 +880,16 @@ function createSim(side) {
         const p1 = sim.points[c.a], p2 = sim.points[c.b];
         const dx = p2.x - p1.x, dy = p2.y - p1.y;
         const dist = Math.sqrt(dx * dx + dy * dy) || 0.0001;
-        const diff = (c.len - dist) / dist * params.stiffness * (c.factor ?? 1);
+        // Al recoger, la longitud proyectada en X disminuye y reaparece como
+        // profundidad de pliegue en uploadGeometry(). Verticalmente la tela
+        // conserva el mismo largo: no se escala ni se estiran sus pixeles.
+        let targetLen = c.len;
+        if (interactionMode === 'open') {
+          targetLen = c.axis === 'x'
+            ? c.xLen * sim.spread
+            : (c.axis === 'diag' ? Math.hypot(c.xLen * sim.spread, c.yLen) : c.len);
+        }
+        const diff = (targetLen - dist) / dist * params.stiffness * (c.factor ?? 1);
         const w1 = p1.pinned ? 0 : 1, w2 = p2.pinned ? 0 : 1;
         const weight = w1 + w2 || 1;
         const ox = dx * diff / weight, oy = dy * diff / weight;
@@ -978,18 +1005,45 @@ rollerMesh.frustumCulled = false;
 rollerMesh.layers.enable(2);
 rollerMesh.visible = false;
 scene.add(rollerMesh);
-const rollerBar = new THREE.Mesh(
-  new THREE.CylinderGeometry(0.045, 0.045, 1, 24),
-  new THREE.MeshStandardMaterial({ color: 0xf2eee8, roughness: 0.54, metalness: 0.08 }),
+const rollerBar = new THREE.Group();
+const rollerRoll = new THREE.Mesh(
+  new THREE.CylinderGeometry(1, 1, 1, qualityTier === 'full' ? 40 : 24, 1, false),
+  new THREE.MeshStandardMaterial({ color: 0xf2eee8, roughness: 0.72, metalness: 0 }),
 );
+rollerRoll.castShadow = true;
+rollerBar.add(rollerRoll);
 rollerBar.rotation.z = Math.PI / 2;
-rollerBar.castShadow = true;
 rollerBar.visible = false;
 scene.add(rollerBar);
 let rollerDrop = 1;
+let rollerTargetDrop = 1;
+let rollerVelocity = 0;
+let rollerRadius = 0.032;
+let rollerAngle = 0;
+const ROLLER_CORE_RADIUS = 0.032;
+// Espesor visual efectivo del tejido enrollado. No intenta representar cada
+// fibra: convierte longitud guardada en seccion de rollo con conservacion de area.
+const ROLLER_EFFECTIVE_THICKNESS = 0.0052;
+function makeRollMaterial(p) {
+  return new THREE.MeshStandardMaterial({
+    map: fabricTex(p.tex, true, p.repeat * 0.7, p.repeat * 0.5),
+    normalMap: fabricTex(p.normal, false, p.repeat * 0.7, p.repeat * 0.5),
+    normalScale: new THREE.Vector2((p.normalScale || 0.2) * 0.72, (p.normalScale || 0.2) * 0.72),
+    color: p.tint,
+    roughness: p.roughness,
+    metalness: 0,
+  });
+}
 function uploadRollerGeometry() {
   const pos = rollerGeo.attributes.position;
-  const top = ROD_Y + 0.035;
+  const uv = rollerGeo.attributes.uv;
+  const rolledLength = H_M * (1 - rollerDrop);
+  rollerRadius = Math.sqrt(
+    ROLLER_CORE_RADIUS * ROLLER_CORE_RADIUS
+    + rolledLength * ROLLER_EFFECTIVE_THICKNESS / Math.PI,
+  );
+  const rollCenterY = ROD_Y + 0.067;
+  const top = rollCenterY - rollerRadius;
   for (let y = 0; y <= ROLLER_ROWS; y++) {
     const v = y / ROLLER_ROWS;
     for (let x = 0; x <= ROLLER_COLS; x++) {
@@ -998,20 +1052,48 @@ function uploadRollerGeometry() {
       const edgeTaper = Math.sin(u * Math.PI);
       const z = Math.sin(u * Math.PI * 2) * 0.006 * edgeTaper;
       pos.setXYZ(i, (u - 0.5) * W_M, top - v * H_M * rollerDrop, z);
+      // Se muestra solo el tramo de tela que aun cuelga. Mantener el rango UV
+      // proporcional a su longitud evita que la trama completa se estire al subir.
+      const sourceV = (1 - rollerDrop) + v * rollerDrop;
+      uv.setXY(i, u, 1 - sourceV);
     }
   }
   pos.needsUpdate = true;
+  uv.needsUpdate = true;
   rollerGeo.computeVertexNormals();
-  rollerBar.scale.y = W_M * 0.82;
-  rollerBar.position.set(0, top + 0.015, CURTAIN_Z - 0.025);
+  rollerAngle = rolledLength / Math.max(0.001, (ROLLER_CORE_RADIUS + rollerRadius) * 0.5);
+  rollerRoll.scale.set(rollerRadius, W_M * 1.02, rollerRadius);
+  rollerRoll.rotation.y = -rollerAngle;
+  rollerBar.position.set(0, rollCenterY, CURTAIN_Z - 0.012);
 }
 function setRollerMaterial(product) {
   rollerMesh.material?.dispose();
+  rollerRoll.material?.dispose();
   rollerMesh.material = makeCurtainMaterial(product);
+  // Las capas superpuestas del rollo se ven densas incluso en Gasa/Tusor;
+  // el frost aprobado sigue viviendo solamente en la lamina desplegada.
+  rollerRoll.material = makeRollMaterial(product);
   // En este prototipo Roller la sombra directa se activa sólo para Blackout.
   // Evita un segundo depth shader dithered en mobile; la transmisión de Gasa y
   // Tusor sigue modulando haze y ambiente con el mismo motor aprobado.
   rollerMesh.castShadow = product.shadowBlock >= 0.95;
+}
+function stepRoller(dt) {
+  if (interactionMode !== 'roller') return;
+  // SmoothDamp critico: conserva inercia sin overshoot y sigue siendo estable
+  // tanto a 120 Hz como en un telefono que cae momentaneamente de cuadros.
+  const smoothTime = 0.18;
+  const omega = 2 / smoothTime;
+  const safeDt = Math.min(dt, 0.1);
+  const x = omega * safeDt;
+  const decay = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+  const change = rollerDrop - rollerTargetDrop;
+  const temp = (rollerVelocity + omega * change) * safeDt;
+  rollerVelocity = (rollerVelocity - omega * temp) * decay;
+  const previous = rollerDrop;
+  rollerDrop = clamp(rollerTargetDrop + (change + temp) * decay, 0.08, 1);
+  if ((rollerDrop === 0.08 && rollerVelocity < 0) || (rollerDrop === 1 && rollerVelocity > 0)) rollerVelocity = 0;
+  if (Math.abs(rollerDrop - previous) > 0.00001 || Math.abs(rollerVelocity) > 0.0001) uploadRollerGeometry();
 }
 uploadRollerGeometry();
 
@@ -1405,22 +1487,21 @@ function beginModeGesture(w) {
   if (!w || interactionMode === 'fabric') return;
   if (interactionMode === 'open') {
     const sim = activeSet.sims[w.x < 0 ? 0 : 1];
-    modeGesture = { mode: 'open', sim, startX: w.x, startSpread: sim.spread };
+    modeGesture = { mode: 'open', sim, startX: w.x, startSpread: sim.openTargetSpread };
   } else {
-    modeGesture = { mode: 'roller', startY: w.y, startDrop: rollerDrop };
+    modeGesture = { mode: 'roller', startY: w.y, startDrop: rollerTargetDrop };
   }
 }
 function updateModeGesture(w) {
   if (!w || !modeGesture) return;
   if (modeGesture.mode === 'open') {
     const outward = modeGesture.sim.side * (w.x - modeGesture.startX);
-    modeGesture.sim.spread = clamp(modeGesture.startSpread - outward / Math.max(0.3, W_M * 0.38), GATHER_SPREAD, 1);
+    modeGesture.sim.openTargetSpread = clamp(modeGesture.startSpread - outward / Math.max(0.3, W_M * 0.38), GATHER_SPREAD, 1);
     modeGesture.sim.cancelRelax();
-    interactionOpenEnergy = Math.max(interactionOpenEnergy, 1 - modeGesture.sim.spread);
+    interactionOpenEnergy = Math.max(interactionOpenEnergy, 1 - modeGesture.sim.openTargetSpread);
   } else {
-    rollerDrop = clamp(modeGesture.startDrop - (w.y - modeGesture.startY) / Math.max(0.4, H_M), 0.08, 1);
-    uploadRollerGeometry();
-    interactionOpenEnergy = Math.max(interactionOpenEnergy, 1 - rollerDrop);
+    rollerTargetDrop = clamp(modeGesture.startDrop - (w.y - modeGesture.startY) / Math.max(0.4, H_M), 0.08, 1);
+    interactionOpenEnergy = Math.max(interactionOpenEnergy, 1 - rollerTargetDrop);
   }
 }
 function endModeGesture() { modeGesture = null; ptr.active = false; }
@@ -1432,6 +1513,8 @@ function setInteractionMode(mode) {
   modeButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.mode === mode)));
   for (const sim of activeSet.sims) {
     sim.spread = 1;
+    sim.openTargetSpread = 1;
+    sim.openVelocity = 0;
     sim.offsetX = 0;
     sim.build();
   }
@@ -1443,6 +1526,8 @@ function setInteractionMode(mode) {
   LATE.rodParts?.forEach((part) => { part.visible = !isRoller; });
   if (isRoller) {
     rollerDrop = 1;
+    rollerTargetDrop = 1;
+    rollerVelocity = 0;
     setRollerMaterial(active);
     uploadRollerGeometry();
   }
@@ -1600,6 +1685,8 @@ function goTo(next) {
   idleSet.setCastShadow(to.castShadow);
   for (const sim of idleSet.sims) {
     sim.spread = GATHER_SPREAD;
+    sim.openTargetSpread = 1;
+    sim.openVelocity = 0;
     sim.offsetX = sim.side * OFF_DIST;
     sim.build();
     sim.kinematic = { t: 0, from: { spread: GATHER_SPREAD, offsetX: sim.side * OFF_DIST }, to: { spread: 1, offsetX: 0 } };
@@ -1632,7 +1719,12 @@ function finishTransition() {
   const ts = transitionState;
   activeSet.setVisible(false);
   for (const sim of [...activeSet.sims, ...idleSet.sims]) sim.kinematic = null;
-  for (const sim of idleSet.sims) { sim.spread = 1; sim.offsetX = 0; }
+  for (const sim of idleSet.sims) {
+    sim.spread = 1;
+    sim.openTargetSpread = 1;
+    sim.openVelocity = 0;
+    sim.offsetX = 0;
+  }
   active = ts.to; currentIndex = ts.next;
   [activeSet, idleSet] = [idleSet, activeSet];
   activeSet.setCastShadow(ts.to.castShadow);
@@ -1659,7 +1751,13 @@ function applySize() {
   W_M = FULL_W;
   CURTAIN_BOTTOM = Math.max(FLOOR_Y + HEM_CLEARANCE, winY - WINDOW_HEM_OVERLAP);
   H_M = ROD_Y + 0.035 - CURTAIN_BOTTOM;
-  for (const sim of activeSet.sims) { sim.spread = 1; sim.offsetX = 0; sim.build(); }
+  for (const sim of activeSet.sims) {
+    sim.spread = 1;
+    sim.openTargetSpread = 1;
+    sim.openVelocity = 0;
+    sim.offsetX = 0;
+    sim.build();
+  }
   if (idleSet.visible) for (const sim of idleSet.sims) sim.build();
   uploadRollerGeometry();
   LATE.rodParts?.forEach((part) => { part.visible = interactionMode !== 'roller'; });
@@ -1783,6 +1881,7 @@ function loop(now) {
   last = now;
   if (document.hidden) { requestAnimationFrame(loop); return; }
   probePerformance(elapsed);
+  stepRoller(elapsed);
   interactionOpenEnergy += (0 - interactionOpenEnergy) * 0.035;
   const steps = Math.min(MAX_SUBSTEPS, Math.max(1, Math.round(elapsed / PHYS_DT)));
   let transitionDone = false;
@@ -1900,7 +1999,13 @@ revealSceneWhenReady();
 
 window.__cortina = {
   getState: () => ({
-    currentIndex, anchoCm, altoCm, switching, interactionMode, rollerDrop, qualityTier, performanceMode,
+    currentIndex, anchoCm, altoCm, switching, interactionMode, rollerDrop, rollerTargetDrop,
+    rollerRadius, rollerAngle, rollerWidth: W_M * 1.02,
+    rollerUvSpan: Math.abs(
+      rollerGeo.attributes.uv.getY(0)
+      - rollerGeo.attributes.uv.getY(ROLLER_ROWS * (ROLLER_COLS + 1)),
+    ),
+    qualityTier, performanceMode,
     sceneReady: document.body.classList.contains('scene-ready'),
     adaptiveRenderScale, renderDpr: renderer.getPixelRatio(),
     qualitySignals: { memoryKnown, deviceMemory, cpuCores, saveData, highDensityMobile, constrainedDevice },
@@ -1917,6 +2022,8 @@ window.__cortina = {
     sourceEnergy: LATE.sourceEnergy || 0, hazeStrength: LATE.hazeStrength || 0, interactionOpenEnergy,
     opening: currentPhysicalOpening(activeSet),
     panelSpreads: activeSet.sims.map((sim) => sim.spread),
+    panelSpreadTargets: activeSet.sims.map((sim) => sim.openTargetSpread),
+    panelOpenVelocities: activeSet.sims.map((sim) => sim.openVelocity),
     productName: PRODUCTS[currentIndex].name, productColor: PRODUCTS[currentIndex].color,
     panels: activeSet.meshes.map((m, panelIndex) => {
       const a = m.geometry.getAttribute('position');
@@ -2014,7 +2121,13 @@ window.__cortina = {
     const end = endHit ? { x: endHit.x, y: endHit.y } : null;
     beginModeGesture(start);
     updateModeGesture(end);
-    const result = { start: start ? { x: start.x, y: start.y } : null, end: end ? { x: end.x, y: end.y } : null, spreads: activeSet.sims.map((sim) => sim.spread), rollerDrop };
+    const result = {
+      start: start ? { x: start.x, y: start.y } : null,
+      end: end ? { x: end.x, y: end.y } : null,
+      spreads: activeSet.sims.map((sim) => sim.spread),
+      spreadTargets: activeSet.sims.map((sim) => sim.openTargetSpread),
+      rollerDrop, rollerTargetDrop,
+    };
     endModeGesture();
     return result;
   },
@@ -2027,6 +2140,8 @@ window.__cortina = {
     setRollerMaterial(product);
     for (const sim of activeSet.sims) {
       sim.spread = 1;
+      sim.openTargetSpread = 1;
+      sim.openVelocity = 0;
       sim.offsetX = 0;
       sim.build();
       sim.kinematic = null;

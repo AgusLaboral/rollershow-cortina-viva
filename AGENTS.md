@@ -96,7 +96,33 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-20 (ronda r55)
+## Estado al 2026-07-21 (ronda r56)
+
+Los dos modos experimentales dejan de deformar la tela con transformaciones
+cinematicas. En `Abrir`, el gesto mueve un objetivo de apertura y los anclajes
+superiores lo siguen mediante un resorte amortiguado; el cuerpo continua bajo
+Verlet y constraints, por lo que cada fila llega con retraso y la caida conserva
+inercia. Los rest lengths proyectados se comprimen solo en X y esa longitud
+reaparece como profundidad de pliegue. No se escala el alto ni se inmoviliza el
+cuerpo del pano.
+
+En `Roller`, el cilindro cubre el 102% del ancho de la tela y usa los mapas PBR
+del producto. El radio crece con la longitud enrollada mediante conservacion de
+area y la superficie gira en proporcion al tejido guardado. La lamina visible
+recorta su rango UV al mismo porcentaje que su largo: la densidad de trama queda
+constante en vez de estirar la textura completa. El drag alimenta un SmoothDamp
+estable por tiempo real para conservar tactilidad sin overshoot en FPS bajos.
+Gasa y Tusor mantienen el frost aprobado solo en la lamina desplegada; el rollo
+multicapa se representa denso. Blackout permanece totalmente opaco.
+
+QA r56: Playwright recorrio mobile lite y desktop full con consola limpia.
+Comprobo que `Abrir` conserva diferencia temporal entre objetivo y pano antes
+de estabilizar, que Roller retiene su posicion, que el radio aumenta al subir,
+que el span UV coincide con el largo visible y que el rollo supera el ancho
+completo de la cortina. Se revisaron capturas de Gasa, Blackout y Tusor en
+Roller y de la cortina tradicional recogida.
+
+### Estado r55 preservado
 
 La experiencia arranca siempre en Gasa y sus mapas pasan a ser los recursos
 críticos del primer cuadro. En mobile únicamente, el LOD de difusión baja 20%
