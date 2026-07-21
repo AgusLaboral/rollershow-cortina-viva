@@ -1098,14 +1098,15 @@ function makeRollMaterial(p) {
   });
 }
 function makeRollerWeightMaterial(p) {
-  // El bolsillo queda a contraluz: se lee como una banda textil densa, no como
-  // aluminio blanco iluminado. MeshBasic evita que el sol exterior lo queme.
+  // El aluminio vive dentro del bolsillo de tela: participa de profundidad,
+  // sombra y oclusión, pero nunca se pinta como una segunda barra visible.
+  // La superficie que se ve sigue siendo el ruedo denso de rollerMesh.
   const material = new THREE.MeshBasicMaterial({
-    map: fabricTex(p.tex, true, p.repeat * 0.85, p.repeat * 0.28),
-    color: new THREE.Color(p.tint).multiplyScalar(0.22),
-    side: THREE.DoubleSide,
+    colorWrite: false,
+    depthWrite: true,
   });
   material.userData.shadowBlock = 1;
+  material.userData.internalCounterweight = true;
   return material;
 }
 function uploadRollerGeometry() {
@@ -1141,9 +1142,9 @@ function uploadRollerGeometry() {
   rollerRoll.rotation.y = -rollerAngle;
   rollerBar.position.set(0, rollCenterY, CURTAIN_Z - 0.012);
   const bottomY = top - H_M * rollerDrop;
-  // Se retrae 3% por lado: el bolsillo de tela tapa el aluminio y no deja
-  // asomar tapas o puntas desde el ángulo oblicuo de cámara.
-  rollerWeight.scale.set(W_M * 0.94, 0.04, 0.022);
+  // Cubre el ruedo completo por dentro: no quedan fugas en las puntas y la
+  // pieza no puede asomar porque su material nunca escribe color.
+  rollerWeight.scale.set(W_M * 1.01, 0.04, 0.022);
   rollerWeight.position.set(0, bottomY + 0.018, CURTAIN_Z - 0.012);
 }
 function setRollerMaterial(product) {
