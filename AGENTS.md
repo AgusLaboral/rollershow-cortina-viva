@@ -96,7 +96,27 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-21 (ronda r57)
+## Estado al 2026-07-21 (ronda r58)
+
+La translucidez Roller deja de duplicar la carpintería. La lámina ya no recibe
+el shadow map del marco porque ese mismo marco vive en la captura frost; sumar
+ambos producía barras oscuras falsas. Su LOD de fondo baja únicamente en Roller
+y la geometría tensada conserva sólo 2,5 mm de bombeo, por lo que la grilla se
+lee continua y estable. El motor frost y los materiales tradicionales aprobados
+no cambian.
+
+La Roller suma el contrapeso inferior real: una barra interior retraída 3% por
+lado, oculta dentro de un bolsillo de la misma textura. La franja final de 2,8
+cm se vuelve densa dentro del shader y corta completamente el frost; la pieza
+física aporta 4 cm de alto y acompaña la subida/bajada. Nunca transmite luz en
+Blackout, Decorativa ni Screen y no muestra tapas laterales.
+
+QA r58: Playwright revisó Screen y Decorativa en 390x844 lite y 1440x900 full,
+sin errores. Verificó contrapeso visible, ancho interior, bloqueo óptico total y
+posición solidaria con el paño al enrollar. Las capturas confirman una sola
+grilla de ventana, sin la onda ni las sombras duplicadas anteriores.
+
+### Estado r57 preservado
 
 La navegación cíclica Anterior/Siguiente fue reemplazada por un selector óptico
 explícito y accesible. Ordena siempre los productos desde menor a mayor paso de

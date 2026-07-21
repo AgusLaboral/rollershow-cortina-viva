@@ -679,6 +679,7 @@ function makeCurtainMaterial(p) {
     shader.uniforms.uWeaveStrength = { value: p.weaveStrength };
     shader.uniforms.uBackfaceCap = { value: p.backfaceCap };
     shader.uniforms.uFoldShade = { value: p.foldShade };
+    shader.uniforms.uDenseHem = { value: p.denseHem || 0 };
     shader.fragmentShader = `uniform float uClothRadianceCap;
       uniform sampler2D uClothBackdrop;
       uniform vec2 uClothViewport;
@@ -688,6 +689,7 @@ function makeCurtainMaterial(p) {
       uniform float uWeaveStrength;
       uniform float uBackfaceCap;
       uniform float uFoldShade;
+      uniform float uDenseHem;
       float clothHash(vec2 p) {
         p = fract(p * vec2(123.34, 456.21));
         p += dot(p, p + 45.32);
@@ -713,7 +715,13 @@ function makeCurtainMaterial(p) {
         float fiberDensity = mix(1.0, microWeave * macroSlub, uWeaveStrength);
         float pathLength = mix(0.58, 1.0, pow(abs(dot(normal, geometryViewDir)), 0.7));
         vec3 wovenFrost = frost * (0.88 + diffuseColor.rgb * 0.12) * fiberDensity * pathLength;
-        outgoingLight = mix(outgoingLight, wovenFrost, uFrostMix);
+        // En Roller, los últimos centímetros envuelven el contrapeso. La misma
+        // textura continúa, pero esa franja es materialmente densa y no puede
+        // muestrear ni transmitir la ventana detrás.
+        float denseHem = uDenseHem * (1.0 - smoothstep(0.0, 0.028, vMapUv.y));
+        float effectiveFrost = uFrostMix * (1.0 - denseHem);
+        outgoingLight = mix(outgoingLight, wovenFrost, effectiveFrost);
+        outgoingLight *= mix(1.0, 0.42, denseHem);
         float foldFacing = pow(abs(dot(normal, geometryViewDir)), 0.65);
         outgoingLight *= mix(1.0, mix(0.7, 1.0, foldFacing), uFoldShade);
         if (!gl_FrontFacing) outgoingLight = min(outgoingLight, diffuseColor.rgb * uBackfaceCap);
@@ -723,7 +731,7 @@ function makeCurtainMaterial(p) {
         #include <opaque_fragment>
       `);
   };
-  material.customProgramCacheKey = () => `cloth-frost-mip-${p.frostMix}-${p.frostLod}-${p.weaveStrength}-${p.foldShade}-${p.radianceCap}-${p.backfaceCap}`;
+  material.customProgramCacheKey = () => `cloth-frost-mip-${p.frostMix}-${p.frostLod}-${p.weaveStrength}-${p.foldShade}-${p.radianceCap}-${p.backfaceCap}-${p.denseHem || 0}`;
   return material;
 }
 
@@ -1038,10 +1046,23 @@ let lightMix = { from: INITIAL_PRODUCT, to: INITIAL_PRODUCT, t: 1 };
 const ROLLER_COLS = qualityTier === 'full' ? 40 : 24;
 const ROLLER_ROWS = qualityTier === 'full' ? 32 : 20;
 const rollerGeo = new THREE.PlaneGeometry(1, 1, ROLLER_COLS, ROLLER_ROWS);
-const rollerMesh = new THREE.Mesh(rollerGeo, makeCurtainMaterial(INITIAL_PRODUCT));
+function makeRollerSheetMaterial(product) {
+  // Una Roller queda tensada y casi plana. Reducir únicamente su radio de
+  // difusión evita sumar una segunda grilla fantasma sobre la sombra real del
+  // marco, sin cambiar el motor frost aprobado de las cortinas tradicionales.
+  return makeCurtainMaterial({
+    ...product,
+    frostLod: product.frostLod * 0.72,
+    foldShade: product.foldShade * 0.35,
+    denseHem: 1,
+  });
+}
+const rollerMesh = new THREE.Mesh(rollerGeo, makeRollerSheetMaterial(INITIAL_PRODUCT));
 rollerMesh.position.z = CURTAIN_Z;
 rollerMesh.renderOrder = 3;
-rollerMesh.receiveShadow = true;
+// La captura frost ya contiene el marco detrás. Recibir además su shadow map
+// lo duplicaba y producía las barras oscuras falsas señaladas por Agus.
+rollerMesh.receiveShadow = false;
 rollerMesh.castShadow = INITIAL_PRODUCT.shadowBlock >= 0.95;
 rollerMesh.frustumCulled = false;
 rollerMesh.layers.enable(2);
@@ -1057,6 +1078,20 @@ rollerBar.add(rollerRoll);
 rollerBar.rotation.z = Math.PI / 2;
 rollerBar.visible = false;
 scene.add(rollerBar);
+// Contrapeso inferior: aluminio oculto dentro de un bolsillo de la misma tela.
+// Es una pieza densa en todos los productos; nunca usa frost ni translucidez.
+const rollerWeight = new THREE.Mesh(
+  new THREE.BoxGeometry(1, 1, 1),
+  makeRollerWeightMaterial(INITIAL_PRODUCT),
+);
+rollerWeight.material.userData.shadowBlock = 1;
+rollerWeight.castShadow = true;
+rollerWeight.receiveShadow = false;
+rollerWeight.renderOrder = 4;
+rollerWeight.frustumCulled = false;
+rollerWeight.layers.enable(2);
+rollerWeight.visible = false;
+scene.add(rollerWeight);
 let rollerDrop = 1;
 let rollerTargetDrop = 1;
 let rollerVelocity = 0;
@@ -1079,6 +1114,17 @@ function makeRollMaterial(p) {
     metalness: 0,
   });
 }
+function makeRollerWeightMaterial(p) {
+  // El bolsillo queda a contraluz: se lee como una banda textil densa, no como
+  // aluminio blanco iluminado. MeshBasic evita que el sol exterior lo queme.
+  const material = new THREE.MeshBasicMaterial({
+    map: fabricTex(p.tex, true, p.repeat * 0.85, p.repeat * 0.28),
+    color: new THREE.Color(p.tint).multiplyScalar(0.22),
+    side: THREE.DoubleSide,
+  });
+  material.userData.shadowBlock = 1;
+  return material;
+}
 function uploadRollerGeometry() {
   const pos = rollerGeo.attributes.position;
   const uv = rollerGeo.attributes.uv;
@@ -1094,8 +1140,9 @@ function uploadRollerGeometry() {
     for (let x = 0; x <= ROLLER_COLS; x++) {
       const u = x / ROLLER_COLS;
       const i = y * (ROLLER_COLS + 1) + x;
-      const edgeTaper = Math.sin(u * Math.PI);
-      const z = Math.sin(u * Math.PI * 2) * 0.006 * edgeTaper;
+      // La barra inferior mantiene la Roller tensada: sólo queda un bombeo
+      // milimétrico, no una onda ancha que deforme la ventana detrás.
+      const z = -Math.sin(u * Math.PI) * 0.0025;
       pos.setXYZ(i, (u - 0.5) * W_M, top - v * H_M * rollerDrop, z);
       // Se muestra solo el tramo de tela que aun cuelga. Mantener el rango UV
       // proporcional a su longitud evita que la trama completa se estire al subir.
@@ -1110,14 +1157,21 @@ function uploadRollerGeometry() {
   rollerRoll.scale.set(rollerRadius, W_M * 1.02, rollerRadius);
   rollerRoll.rotation.y = -rollerAngle;
   rollerBar.position.set(0, rollCenterY, CURTAIN_Z - 0.012);
+  const bottomY = top - H_M * rollerDrop;
+  // Se retrae 3% por lado: el bolsillo de tela tapa el aluminio y no deja
+  // asomar tapas o puntas desde el ángulo oblicuo de cámara.
+  rollerWeight.scale.set(W_M * 0.94, 0.04, 0.022);
+  rollerWeight.position.set(0, bottomY + 0.018, CURTAIN_Z - 0.012);
 }
 function setRollerMaterial(product) {
   rollerMesh.material?.dispose();
   rollerRoll.material?.dispose();
-  rollerMesh.material = makeCurtainMaterial(product);
+  rollerWeight.material?.dispose();
+  rollerMesh.material = makeRollerSheetMaterial(product);
   // Las capas superpuestas del rollo se ven densas incluso en Gasa/Tusor;
   // el frost aprobado sigue viviendo solamente en la lamina desplegada.
   rollerRoll.material = makeRollMaterial(product);
+  rollerWeight.material = makeRollerWeightMaterial(product);
   // En este prototipo Roller la sombra directa se activa sólo para Blackout.
   // Evita un segundo depth shader dithered en mobile; la transmisión de Gasa y
   // Tusor sigue modulando haze y ambiente con el mismo motor aprobado.
@@ -1165,7 +1219,7 @@ const clothMaskTarget = new THREE.WebGLRenderTarget(OCC_SIZE, Math.round(OCC_SIZ
 });
 const occOpaque = new THREE.MeshBasicMaterial({ color: 0x000000 });
 const occSwap = new Map();
-const curtainMeshes = new Set([...setA.meshes, ...setB.meshes, rollerMesh]);
+const curtainMeshes = new Set([...setA.meshes, ...setB.meshes, rollerMesh, rollerWeight]);
 const occCurtainMats = new Map([...curtainMeshes].map((mesh) => [
   mesh, new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true }),
 ]));
@@ -1553,6 +1607,7 @@ function setInteractionMode(mode) {
   activeSet.setVisible(!isRoller);
   rollerMesh.visible = isRoller;
   rollerBar.visible = isRoller;
+  rollerWeight.visible = isRoller;
   LATE.rodParts?.forEach((part) => { part.visible = !isRoller; });
   if (isRoller) {
     rollerDrop = 1;
@@ -2133,6 +2188,13 @@ window.__cortina = {
   getState: () => ({
     currentIndex, anchoCm, altoCm, switching, interactionMode, rollerDrop, rollerTargetDrop,
     rollerRadius, rollerAngle, rollerWidth: W_M * 1.02,
+    rollerWeight: {
+      visible: rollerWeight.visible,
+      width: rollerWeight.scale.x,
+      height: rollerWeight.scale.y,
+      y: rollerWeight.position.y,
+      opaque: rollerWeight.material.userData.shadowBlock === 1,
+    },
     rollerUvSpan: Math.abs(
       rollerGeo.attributes.uv.getY(0)
       - rollerGeo.attributes.uv.getY(ROLLER_ROWS * (ROLLER_COLS + 1)),
