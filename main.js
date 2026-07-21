@@ -322,36 +322,33 @@ const hazeGroup = new THREE.Group();
 scene.add(hazeGroup);
 const SUN_DIR = new THREE.Vector3(-1.2, -3.0, 7.2).normalize(); // exterior -> piso interior
 
-function makeWindowCookieTexture() {
+function makeDiffuseTransmissionTexture() {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 256;
   const context = canvas.getContext('2d');
-  const edgeX = context.createLinearGradient(0, 0, 256, 0);
-  edgeX.addColorStop(0, 'rgba(255,255,255,0)');
-  edgeX.addColorStop(0.08, 'rgba(255,255,255,0.92)');
-  edgeX.addColorStop(0.92, 'rgba(255,255,255,0.92)');
-  edgeX.addColorStop(1, 'rgba(255,255,255,0)');
-  context.fillStyle = edgeX;
-  context.fillRect(0, 0, 256, 256);
-  context.globalCompositeOperation = 'destination-in';
-  const edgeY = context.createLinearGradient(0, 0, 0, 256);
-  edgeY.addColorStop(0, 'rgba(255,255,255,0)');
-  edgeY.addColorStop(0.07, 'rgba(255,255,255,1)');
-  edgeY.addColorStop(0.93, 'rgba(255,255,255,1)');
-  edgeY.addColorStop(1, 'rgba(255,255,255,0)');
-  context.fillStyle = edgeY;
-  context.fillRect(0, 0, 256, 256);
-  context.globalCompositeOperation = 'destination-out';
-  context.fillStyle = 'rgba(0,0,0,0.78)';
-  context.fillRect(124, 0, 8, 256);
-  for (let row = 1; row < 4; row++) context.fillRect(0, row * 64 - 3, 256, 6);
-  context.globalCompositeOperation = 'source-over';
+  const image = context.createImageData(256, 256);
+  // La tela destruye la informacion espacial fina del marco. Esta textura no
+  // contiene barras: su energia cae gradualmente hacia todos los extremos.
+  for (let y = 0; y < 256; y++) {
+    for (let x = 0; x < 256; x++) {
+      const nx = Math.abs((x + 0.5) / 128 - 1);
+      const ny = Math.abs((y + 0.5) / 128 - 1);
+      const edge = Math.max(nx * 0.78, ny);
+      const feather = 1 - smoothstep(0.48, 1, edge);
+      const radial = Math.max(0, 1 - Math.sqrt(nx * nx * 0.28 + ny * ny * 0.5) * 0.28);
+      const alpha = Math.round(255 * feather * radial);
+      const i = (y * 256 + x) * 4;
+      image.data[i] = image.data[i + 1] = image.data[i + 2] = 255;
+      image.data[i + 3] = alpha;
+    }
+  }
+  context.putImageData(image, 0, 0);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
 }
 const transmittedPoolMat = new THREE.MeshBasicMaterial({
-  map: makeWindowCookieTexture(),
+  map: makeDiffuseTransmissionTexture(),
   color: 0xffd9b0,
   transparent: true,
   opacity: 0,
@@ -735,34 +732,13 @@ function makeCurtainMaterial(p) {
   return material;
 }
 
-// Sombra parcial estable: un hash de profundidad hace que PCF integre una
-// sombra proporcional sin convertir Gasa/Tusor en un bloque negro opaco.
+// La tela bloquea la componente DIRECCIONAL incluso cuando es translucida.
+// Su luz transmitida se recompone como un charco difuso separado; permitir que
+// el shadow map atraviese fibras copiaba la grilla nitida sobre el piso.
 function makeShadowMaterial(p) {
-  if (p.shadowBlock >= 0.999) {
-    return new THREE.MeshDepthMaterial({
-      depthPacking: THREE.RGBADepthPacking,
-      side: THREE.DoubleSide,
-    });
-  }
-  return new THREE.ShaderMaterial({
-    uniforms: { uShadowBlock: { value: p.shadowBlock } },
-    vertexShader: `void main() {
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }`,
-    fragmentShader: `
-      #include <packing>
-      uniform float uShadowBlock;
-      float shadowHash(vec2 p) {
-        return fract(52.9829189 * fract(dot(floor(p), vec2(0.06711056, 0.00583715))));
-      }
-      void main() {
-        if (shadowHash(gl_FragCoord.xy) > uShadowBlock) discard;
-        gl_FragColor = packDepthToRGBA(gl_FragCoord.z);
-      }
-    `,
+  return new THREE.MeshDepthMaterial({
+    depthPacking: THREE.RGBADepthPacking,
     side: THREE.DoubleSide,
-    depthTest: true,
-    depthWrite: true,
   });
 }
 
@@ -1058,12 +1034,13 @@ function makeRollerSheetMaterial(product) {
   });
 }
 const rollerMesh = new THREE.Mesh(rollerGeo, makeRollerSheetMaterial(INITIAL_PRODUCT));
+rollerMesh.customDepthMaterial = makeShadowMaterial(INITIAL_PRODUCT);
 rollerMesh.position.z = CURTAIN_Z;
 rollerMesh.renderOrder = 3;
 // La captura frost ya contiene el marco detrás. Recibir además su shadow map
 // lo duplicaba y producía las barras oscuras falsas señaladas por Agus.
 rollerMesh.receiveShadow = false;
-rollerMesh.castShadow = INITIAL_PRODUCT.shadowBlock >= 0.95;
+rollerMesh.castShadow = true;
 rollerMesh.frustumCulled = false;
 rollerMesh.layers.enable(2);
 rollerMesh.visible = false;
@@ -1165,17 +1142,18 @@ function uploadRollerGeometry() {
 }
 function setRollerMaterial(product) {
   rollerMesh.material?.dispose();
+  rollerMesh.customDepthMaterial?.dispose();
   rollerRoll.material?.dispose();
   rollerWeight.material?.dispose();
   rollerMesh.material = makeRollerSheetMaterial(product);
+  rollerMesh.customDepthMaterial = makeShadowMaterial(product);
   // Las capas superpuestas del rollo se ven densas incluso en Gasa/Tusor;
   // el frost aprobado sigue viviendo solamente en la lamina desplegada.
   rollerRoll.material = makeRollMaterial(product);
   rollerWeight.material = makeRollerWeightMaterial(product);
-  // En este prototipo Roller la sombra directa se activa sólo para Blackout.
-  // Evita un segundo depth shader dithered en mobile; la transmisión de Gasa y
-  // Tusor sigue modulando haze y ambiente con el mismo motor aprobado.
-  rollerMesh.castShadow = product.shadowBlock >= 0.95;
+  // Toda tela bloquea la proyeccion direccional del marco. Gasa y Tusor
+  // recuperan energia mediante la transmision difusa del piso, no con grilla.
+  rollerMesh.castShadow = true;
 }
 function stepRoller(dt) {
   if (interactionMode !== 'roller') return;
@@ -1420,7 +1398,8 @@ function applyLightMix() {
   // La intensidad exterior es constante. La pared y la sombra de la tela
   // determinan fisicamente donde llega el sol y cuanto crece la huella.
   sun.intensity = SUN_BASE_INTENSITY;
-  transmittedPoolMat.opacity = transmission * (1 - opening) * 0.07;
+  const clothCoverage = 1 - normalizedOpening * 0.88;
+  transmittedPoolMat.opacity = transmission * clothCoverage * 0.2;
   // El radial blur 2D se mantiene fuera: al no conocer profundidad sumaba luz
   // por encima de la tela. La bruma 3D sí queda ocluida por cada paño.
   // Bruma alineada con la ventana y ocluida por la tela. Reemplaza las capas
@@ -2214,6 +2193,13 @@ window.__cortina = {
       roller: worldToClient(0, CURTAIN_BOTTOM + H_M * 0.45),
     },
     sourceEnergy: LATE.sourceEnergy || 0, hazeStrength: LATE.hazeStrength || 0, interactionOpenEnergy,
+    floorProjection: {
+      transmittedOpacity: transmittedPoolMat.opacity,
+      diffuseTexture: transmittedPoolMat.map === null ? false : true,
+      directionalBlockedByFabric: interactionMode === 'roller'
+        ? rollerMesh.castShadow
+        : activeSet.meshes.every((mesh) => mesh.castShadow),
+    },
     opening: currentPhysicalOpening(activeSet),
     panelSpreads: activeSet.sims.map((sim) => sim.spread),
     panelSpreadTargets: activeSet.sims.map((sim) => sim.openTargetSpread),

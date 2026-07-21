@@ -46,7 +46,9 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
   del shader (`frostMix` / `frostRadius`), conservando depthWrite y superficie
   textil para evitar los triángulos de alpha sorting. PROHIBIDO `transmission`
   de `MeshPhysicalMaterial`: agrega un render interno por objeto. La transmisión
-  de luz ambiental vive en `sunFactor`; la sombra, en `shadowBlock`.
+  de luz ambiental vive en `sunFactor`; `shadowBlock` modula haze/oclusión.
+  Toda tela bloquea el sol direccional en el shadow map: Gasa/Tusor recuperan
+  energía con un charco difuso independiente, nunca copiando la grilla.
 - **Atmósfera**: el haz combina oclusión radial y bloom. La bruma nace del pase
   de oclusión alineado con el vano; no usa sprites aditivos, porque generaban
   una falsa fuente ámbar sobre la pared izquierda. No resolver con blur global:
@@ -96,7 +98,21 @@ Dev local: `python -m http.server 8934` en la raíz del repo → http://localhos
 - Acelerómetro: solo verificable en dispositivo real (iPhone pide permiso al
   primer toque; Android no pide).
 
-## Estado al 2026-07-21 (ronda r58)
+## Estado al 2026-07-21 (ronda r59)
+
+La proyección del piso separa luz directa de luz transmitida. Toda superficie
+de tela bloquea la componente direccional del sol, por lo que la carpintería
+sólo deja líneas nítidas donde existe un hueco físico entre paños o bajo una
+Roller levantada. Gasa y Tusor recompensan esa energía con un charco aditivo sin
+barras, de caída amplia y feather creciente hacia los extremos; sus potencias
+siguen ordenadas por `sunFactor`. Blackout no recibe ese aporte.
+
+QA r59: inspección Playwright en desktop full y mobile lite sin errores. Gasa y
+Tusor muestran iluminación difusa bajo tela; Blackout queda sin transmisión;
+la apertura central conserva la proyección nítida. Roller usa la misma
+separación y mantiene su grilla visible sólo como backdrop óptico del producto.
+
+### Estado r58 preservado
 
 La translucidez Roller deja de duplicar la carpintería. La lámina ya no recibe
 el shadow map del marco porque ese mismo marco vive en la captura frost; sumar
