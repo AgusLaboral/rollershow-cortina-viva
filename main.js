@@ -1586,6 +1586,7 @@ function setInteractionMode(mode) {
     String(button.dataset.family === (isRoller ? 'roller' : 'traditional')),
   ));
   interactionGroup.classList.toggle('is-roller', isRoller);
+  interactionGroup.hidden = isRoller;
   interactionTitle.textContent = isRoller ? 'Cómo usarla' : 'Cómo querés probarla';
   modeSwitch.hidden = isRoller;
   rollerInstruction.hidden = !isRoller;
